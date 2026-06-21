@@ -23,7 +23,7 @@ export class PortfolioDashboardPanel {
     ) {
         this._panel = vscode.window.createWebviewPanel(
             PortfolioDashboardPanel.viewType,
-            '📊 Portfolio Analyzer',
+            '📊 StockLens',
             vscode.ViewColumn.One,
             {
                 enableScripts: true,
@@ -385,7 +385,7 @@ Respond in HTML using these classes for structure:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio Analyzer</title>
+    <title>StockLens</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -950,7 +950,7 @@ Respond in HTML using these classes for structure:
 </head>
 <body>
     <header class="header">
-        <h1>📊 Portfolio Analyzer</h1>
+        <h1>📊 StockLens</h1>
         <div class="header-actions">
             <button class="btn btn-secondary" onclick="exportReport()">📄 Export Report</button>
             <button class="btn btn-secondary" onclick="configure()">⚙️ Configure</button>

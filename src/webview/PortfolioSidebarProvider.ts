@@ -328,7 +328,7 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio Analyzer</title>
+    <title>StockLens</title>
     <style>
         :root {
             --bg-primary: var(--vscode-editor-background);

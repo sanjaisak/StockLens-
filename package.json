@@ -1,6 +1,6 @@
 {
-  "name": "portfolio-analyzer",
-  "displayName": "Portfolio Analyzer",
+  "name": "stocklens",
+  "displayName": "StockLens",
   "description": "Comprehensive equity research and portfolio analysis with charts and multi-broker support",
   "version": "1.1.0",
   "publisher": "portfolio-tools",
@@ -19,44 +19,44 @@
     "trading",
     "charts"
   ],
-  "icon": "media/icon.png",
+  "icon": "media/icon.svg",
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "portfolioAnalyzer.openDashboard",
-        "title": "Portfolio Analyzer: Open Dashboard",
+        "title": "StockLens: Open Dashboard",
         "icon": "$(graph)"
       },
       {
         "command": "portfolioAnalyzer.refreshData",
-        "title": "Portfolio Analyzer: Refresh Data",
+        "title": "StockLens: Refresh Data",
         "icon": "$(refresh)"
       },
       {
         "command": "portfolioAnalyzer.configureProvider",
-        "title": "Portfolio Analyzer: Configure Broker",
+        "title": "StockLens: Configure Broker",
         "icon": "$(gear)"
       },
       {
         "command": "portfolioAnalyzer.showScoringInfo",
-        "title": "Portfolio Analyzer: Scoring Methodology",
+        "title": "StockLens: Scoring Methodology",
         "icon": "$(info)"
       },
       {
         "command": "portfolioAnalyzer.searchStock",
-        "title": "Portfolio Analyzer: Search & Analyze Stock",
+        "title": "StockLens: Search & Analyze Stock",
         "icon": "$(search)"
       },
       {
         "command": "portfolioAnalyzer.refreshWatchlist",
-        "title": "Portfolio Analyzer: Refresh Watchlist",
+        "title": "StockLens: Refresh Watchlist",
         "icon": "$(refresh)"
       },
       {
         "command": "portfolioAnalyzer.newWatchlist",
-        "title": "Portfolio Analyzer: New Watchlist",
+        "title": "StockLens: New Watchlist",
         "icon": "$(add)"
       }
     ],
@@ -71,7 +71,7 @@
       "activitybar": [
         {
           "id": "portfolioAnalyzer",
-          "title": "Portfolio Analyzer",
+          "title": "StockLens",
           "icon": "$(graph-line)"
         }
       ]
@@ -91,7 +91,7 @@
       ]
     },
     "configuration": {
-      "title": "Portfolio Analyzer",
+      "title": "StockLens",
       "properties": {
         "portfolioAnalyzer.activeProvider": {
           "type": "string",

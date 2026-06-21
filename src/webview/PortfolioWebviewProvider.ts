@@ -1,6 +1,6 @@
 /**
  * Portfolio Webview Provider
- * Provides the UI for the portfolio analyzer dashboard
+ * Provides the UI for the StockLens dashboard
  */
 
 import * as vscode from 'vscode';
@@ -116,7 +116,7 @@ export class PortfolioWebviewProvider implements vscode.WebviewViewProvider {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio Analyzer</title>
+    <title>StockLens</title>
     <style>
         :root {
             --bg-primary: var(--vscode-editor-background);
@@ -515,7 +515,7 @@ export class PortfolioWebviewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
     <div class="header">
-        <h1>📊 Portfolio Analyzer</h1>
+        <h1>📊 StockLens</h1>
         <div class="header-actions">
             <button onclick="refresh()" title="Refresh">🔄</button>
             <button onclick="configure()" class="secondary" title="Configure">⚙️</button>

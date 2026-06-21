@@ -1,5 +1,5 @@
 /**
- * Portfolio Analyzer - VS Code Extension
+ * StockLens - VS Code Extension
  * Sidebar for overview + separate panel for stock details
  */
 
@@ -19,7 +19,7 @@ let stockDetailPanels: Map<string, StockDetailPanel> = new Map();
 let stockSearchService: StockSearchService;
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log("Portfolio Analyzer extension is now active!");
+  console.log("StockLens extension is now active!");
   console.log("Extension path:", context.extensionPath);
 
   // Initialize services
@@ -366,5 +366,5 @@ export function deactivate() {
   // Clean up all stock detail panels
   stockDetailPanels.forEach((panel) => panel.dispose());
   stockDetailPanels.clear();
-  console.log("Portfolio Analyzer extension deactivated");
+  console.log("StockLens extension deactivated");
 }
