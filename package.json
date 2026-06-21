@@ -1,0 +1,192 @@
+{
+  "name": "portfolio-analyzer",
+  "displayName": "Portfolio Analyzer",
+  "description": "Comprehensive equity research and portfolio analysis with charts and multi-broker support",
+  "version": "1.1.0",
+  "publisher": "portfolio-tools",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "portfolio",
+    "stocks",
+    "equity",
+    "research",
+    "IndMoney",
+    "trading",
+    "charts"
+  ],
+  "icon": "media/icon.png",
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "portfolioAnalyzer.openDashboard",
+        "title": "Portfolio Analyzer: Open Dashboard",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "portfolioAnalyzer.refreshData",
+        "title": "Portfolio Analyzer: Refresh Data",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "portfolioAnalyzer.configureProvider",
+        "title": "Portfolio Analyzer: Configure Broker",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "portfolioAnalyzer.showScoringInfo",
+        "title": "Portfolio Analyzer: Scoring Methodology",
+        "icon": "$(info)"
+      },
+      {
+        "command": "portfolioAnalyzer.searchStock",
+        "title": "Portfolio Analyzer: Search & Analyze Stock",
+        "icon": "$(search)"
+      },
+      {
+        "command": "portfolioAnalyzer.refreshWatchlist",
+        "title": "Portfolio Analyzer: Refresh Watchlist",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "portfolioAnalyzer.newWatchlist",
+        "title": "Portfolio Analyzer: New Watchlist",
+        "icon": "$(add)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "portfolioAnalyzer.searchStock",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "portfolioAnalyzer",
+          "title": "Portfolio Analyzer",
+          "icon": "$(graph-line)"
+        }
+      ]
+    },
+    "views": {
+      "portfolioAnalyzer": [
+        {
+          "type": "webview",
+          "id": "portfolioAnalyzer.dashboard",
+          "name": "Dashboard"
+        },
+        {
+          "type": "webview",
+          "id": "portfolioAnalyzer.watchlist",
+          "name": "Watchlist"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Portfolio Analyzer",
+      "properties": {
+        "portfolioAnalyzer.activeProvider": {
+          "type": "string",
+          "default": "indmoney",
+          "enum": [
+            "manual",
+            "indmoney",
+            "zerodha",
+            "groww",
+            "upstox"
+          ],
+          "enumDescriptions": [
+            "Manual Holdings (enter stocks yourself)",
+            "IndMoney (INDstocks)",
+            "Zerodha (Kite)",
+            "Groww",
+            "Upstox"
+          ],
+          "description": "Select your broker/trading platform"
+        },
+        "portfolioAnalyzer.indmoney.accessToken": {
+          "type": "string",
+          "default": "",
+          "description": "IndMoney API access token"
+        },
+        "portfolioAnalyzer.zerodha.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Zerodha Kite API key"
+        },
+        "portfolioAnalyzer.zerodha.accessToken": {
+          "type": "string",
+          "default": "",
+          "description": "Zerodha Kite access token"
+        },
+        "portfolioAnalyzer.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-refresh prices during market hours"
+        },
+        "portfolioAnalyzer.refreshInterval": {
+          "type": "number",
+          "default": 60,
+          "description": "Refresh interval in seconds"
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "portfolioAnalyzer.refreshData",
+          "when": "view == portfolioAnalyzer.dashboard",
+          "group": "navigation"
+        },
+        {
+          "command": "portfolioAnalyzer.showScoringInfo",
+          "when": "view == portfolioAnalyzer.dashboard",
+          "group": "navigation"
+        },
+        {
+          "command": "portfolioAnalyzer.configureProvider",
+          "when": "view == portfolioAnalyzer.dashboard",
+          "group": "navigation"
+        },
+        {
+          "command": "portfolioAnalyzer.newWatchlist",
+          "when": "view == portfolioAnalyzer.watchlist",
+          "group": "navigation"
+        },
+        {
+          "command": "portfolioAnalyzer.refreshWatchlist",
+          "when": "view == portfolioAnalyzer.watchlist",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./ && node -e \"const fs=require('fs'); fs.copyFileSync('src/indian_stocks.json', 'out/indian_stocks.json');\"",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.0"
+  }
+}
