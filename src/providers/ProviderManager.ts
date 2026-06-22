@@ -25,7 +25,7 @@ export class ProviderManager {
 
   /** Factory: create a provider by id. Add new providers here. */
   create(id: string): IPortfolioProvider {
-    if (id === "indmoney") return new IndMoneyProvider();
+    if (id === "indmoney") return new IndMoneyProvider(this.context);
     if (id === "manual") return new ManualHoldingsProvider(this.context);
     throw new Error(`Unknown provider id: "${id}"`);
   }
@@ -43,9 +43,13 @@ export class ProviderManager {
   }
 
   getActiveProvider(): IPortfolioProvider | undefined {
-    const config = vscode.workspace.getConfiguration("portfolioAnalyzer");
-    const activeId = config.get<string>("activeProvider", "indmoney");
-    return this.providers.get(activeId);
+    return this.providers.get("manual");
+  }
+
+  getBrokerProvider(id: string): IPortfolioProvider {
+    const provider = this.providers.get(id);
+    if (!provider) throw new Error(`Unknown broker provider: "${id}"`);
+    return provider;
   }
 
   getAvailableProviders(): { id: string; name: string; configured: boolean }[] {

@@ -59,13 +59,11 @@ StockLens shows you:
 2. In VS Code: `Ctrl+Shift+P` → "Extensions: Install from VSIX..."
 3. Select the file and done!
 
-### Step 2: Connect Your Broker (or Start Manual)
+### Step 2: Add Your Holdings
 1. Click the **StockLens** icon in the left sidebar
-2. Click **"Configure Broker"** ⚙️
-3. Choose your option:
-   - **Manual Holdings** - Type in your stocks yourself (no account needed)
-   - **IndMoney** - Auto-import from your broker account
-4. Follow setup instructions for your choice
+2. Your portfolio opens with **Manual Holdings** as the default
+3. To add stocks manually: click **"+ Add"** and enter symbol, quantity, and average price
+4. To import from a broker: click **"↓ Import"** → select your broker → configure and sync
 
 ### Step 3: Start Analyzing
 - Your portfolio loads instantly
@@ -80,16 +78,16 @@ StockLens shows you:
 Every stock gets analyzed on **10 factors**:
 
 ```
-✓ Revenue Growth (15%)  → Is the company growing?
-✓ Profit Growth (15%)   → Are profits increasing?
-✓ Balance Sheet (10%)   → Is debt under control?
-✓ Cash Flow (10%)       → Real money flowing in?
-✓ Management (10%)      → Do insiders believe in it?
-✓ Industry Trend (10%)  → Is the sector booming?
+✓ Revenue Growth (15%) → Is the company growing?
+✓ Profit Growth (15%) → Are profits increasing?
+✓ Balance Sheet (10%) → Is debt under control?
+✓ Cash Flow (10%) → Real money flowing in?
+✓ Management (10%) → Do insiders believe in it?
+✓ Industry Trend (10%) → Is the sector booming?
 ✓ Competitive Moat (10%)→ Does it have an edge?
-✓ Valuation (10%)       → Is it fairly priced?
-✓ Capital Return (5%)   → Good dividend/buybacks?
-✓ Risk Level (5%)       → How volatile is it?
+✓ Valuation (10%) → Is it fairly priced?
+✓ Capital Return (5%) → Good dividend/buybacks?
+✓ Risk Level (5%) → How volatile is it?
 ```
 
 ### Your Verdict Guide:
@@ -124,19 +122,21 @@ Better Balance: More growth stocks, less risky
 
 ## 🔐 Privacy First
 
-✓ Your broker login stays on **your computer only**  
-✓ No cloud sync, no servers tracking you  
-✓ Read-only access (we never trade for you)  
-✓ Same security as VS Code itself  
+✓ Your broker login stays on **your computer only** 
+✓ No cloud sync, no servers tracking you 
+✓ Read-only access (we never trade for you) 
+✓ Same security as VS Code itself 
 
 ---
 
 ## 🌟 Supported Brokers & Entry Methods
 
+Holdings are always stored locally in **Manual Holdings** — your single source of truth. Use the **↓ Import** button inside the sidebar to pull in positions from a broker.
+
 | Option | Status | Notes |
 |--------|--------|-------|
-| **Manual Holdings** | ✅ Ready Now | Enter stocks manually, no account needed |
-| **IndMoney** | ✅ Ready Now | Best compatibility, auto-import |
+| **Manual Holdings** | ✅ Default | Add/edit stocks directly, no account needed |
+| **IndMoney** | ✅ Import Ready | One-click sync via ↓ Import → IndMoney |
 | **Zerodha** | 🔜 Coming Soon | High demand |
 | **Groww** | 🔜 Coming Soon | Popular with beginners |
 | **Upstox** | 🔜 Coming Soon | Growing platform |
@@ -166,43 +166,32 @@ Better Balance: More growth stocks, less risky
 
 ---
 
-## 🆘 Getting IndMoney Access Token (2 mins)
-
-1. Go to IndMoney.com and **log in**
-2. Open **Developer Tools** (Press `F12`)
-3. Go to **Network** tab
-4. Any API call → Look for **Authorization** header
-5. Copy the **token value**
-6. Paste in StockLens → Done!
-
----
-
 ## 💡 Tips for Best Results
 
-✅ Update holdings regularly (sync with broker)  
-✅ Check AI advice weekly for market changes  
-✅ Review portfolio health before big decisions  
-✅ Use scores to identify stocks to research deeper  
-✅ Compare multiple stocks before investing  
+✅ Update holdings regularly (sync with broker) 
+✅ Check AI advice weekly for market changes 
+✅ Review portfolio health before big decisions 
+✅ Use scores to identify stocks to research deeper 
+✅ Compare multiple stocks before investing 
 
 ---
 
 ## ❓ FAQ
 
-**Q: Is this a trading recommendation?**  
+**Q: Is this a trading recommendation?** 
 A: No. StockLens shows you analysis. You make decisions.
 
-**Q: Can it lose money for me?**  
+**Q: Can it lose money for me?** 
 A: No. It's read-only - just analysis and advice.
 
-**Q: How often are prices updated?**  
+**Q: How often are prices updated?** 
 A: Every 60 seconds during market hours (configurable).
 
-**Q: Does it work offline?**  
+**Q: Does it work offline?** 
 A: Initial data loads need internet. Updates work offline.
 
-**Q: Can I use multiple brokers?**  
-A: Currently one at a time. More brokers = future feature.
+**Q: Can I use multiple brokers?** 
+A: Yes — import from any supported broker into your Manual Holdings. You can import from IndMoney today; Zerodha, Groww, and Upstox are coming soon.
 
 ---
 

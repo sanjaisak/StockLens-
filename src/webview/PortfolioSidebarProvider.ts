@@ -98,11 +98,12 @@ export class PortfolioSidebarProvider implements vscode.WebviewViewProvider {
           );
           break;
         }
-        case "switchProvider": {
-          await vscode.workspace
-            .getConfiguration("portfolioAnalyzer")
-            .update("activeProvider", data.providerId, vscode.ConfigurationTarget.Global);
-          await this.refresh();
+        case "syncFromBroker": {
+          await this._handleSyncFromBroker(data.broker, webviewView);
+          break;
+        }
+        case "configureBroker": {
+          await this._handleConfigureBroker(data.broker, webviewView);
           break;
         }
         case "manualAdd":
@@ -208,18 +209,18 @@ export class PortfolioSidebarProvider implements vscode.WebviewViewProvider {
         }),
       );
 
-      const activeProviderId = vscode.workspace
-        .getConfiguration("portfolioAnalyzer")
-        .get<string>("activeProvider", "indmoney");
       const manualHoldings = this._providerManager.getManualProvider().getStoredHoldings();
+      const brokerStatus = {
+        indmoney: this._context.globalState.get<string>("indmoney.accessToken", "").length > 0,
+      };
 
       // Send to webview
       this._view.webview.postMessage({
         type: "data",
         portfolio: this._portfolioData,
         zones,
-        activeProvider: activeProviderId,
         manualHoldings,
+        brokerStatus,
       });
     } catch (error: any) {
       this._view.webview.postMessage({
@@ -325,6 +326,63 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
       onDone();
     } catch (err: any) {
       onError(err?.message || "AI review failed");
+    }
+  }
+
+  private async _handleConfigureBroker(broker: string, webviewView: vscode.WebviewView): Promise<void> {
+    if (broker !== "indmoney") {
+      const label = broker.charAt(0).toUpperCase() + broker.slice(1);
+      vscode.window.showInformationMessage(`${label} support coming soon!`);
+      return;
+    }
+    const token = await vscode.window.showInputBox({
+      prompt: "Enter your IndMoney access token",
+      password: true,
+      placeHolder: "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9...",
+    });
+    if (!token) return;
+    await this._context.globalState.update("indmoney.accessToken", token);
+    webviewView.webview.postMessage({ type: "brokerStatus", brokerStatus: { indmoney: true } });
+    vscode.window.showInformationMessage("IndMoney configured!");
+  }
+
+  private async _handleSyncFromBroker(broker: string, webviewView: vscode.WebviewView): Promise<void> {
+    if (broker !== "indmoney") {
+      const label = broker.charAt(0).toUpperCase() + broker.slice(1);
+      vscode.window.showInformationMessage(`${label} sync coming soon!`);
+      return;
+    }
+
+    let token = this._context.globalState.get<string>("indmoney.accessToken", "");
+    if (!token) {
+      token = (await vscode.window.showInputBox({
+        prompt: "Enter your IndMoney access token to sync holdings",
+        password: true,
+        placeHolder: "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9...",
+      })) ?? "";
+      if (!token) return;
+      await this._context.globalState.update("indmoney.accessToken", token);
+    }
+
+    webviewView.webview.postMessage({ type: "syncStatus", status: "syncing", broker });
+    try {
+      const brokerProvider = this._providerManager.getBrokerProvider("indmoney");
+      const holdings = await brokerProvider.getHoldings();
+      const mp = this._providerManager.getManualProvider();
+      await mp.addOrUpdateMultipleHoldings(
+        holdings.map((h) => ({
+          symbol: h.symbol,
+          name: h.name || h.symbol,
+          quantity: h.quantity,
+          avgPrice: h.avgPrice,
+          exchange: h.exchange || "NSE",
+        })),
+      );
+      vscode.window.showInformationMessage(`Synced ${holdings.length} holdings from IndMoney`);
+      await this.refresh();
+    } catch (e: any) {
+      webviewView.webview.postMessage({ type: "syncStatus", status: "error", broker, message: e.message });
+      vscode.window.showErrorMessage(`IndMoney sync failed: ${e.message}`);
     }
   }
 
@@ -698,35 +756,59 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
         .ai-review-btn:hover { opacity: 0.8; }
         .ai-review-btn:disabled { opacity: 0.4; cursor: default; }
 
-        /* Provider selector */
-        .provider-bar {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 12px;
-            padding: 6px 8px;
-            background: var(--bg-secondary);
+        /* Import button */
+        .import-btn {
+            font-size: 9px;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: transparent;
             border: 1px solid var(--border-color);
-            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-family: var(--vscode-font-family);
+            transition: all 0.15s;
         }
-        .provider-label {
+        .import-btn:hover, .import-btn.active { border-color: var(--accent-color); color: var(--accent-color); }
+
+        /* Broker picker panel */
+        .broker-picker {
+            border-top: 1px solid var(--border-color);
+            padding: 4px 0 6px;
+        }
+        .broker-picker-title {
             font-size: 9px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             color: var(--text-secondary);
-            flex-shrink: 0;
+            padding: 4px 12px 6px;
+            opacity: 0.65;
         }
-        .provider-select {
-            flex: 1;
+        .broker-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 12px;
+        }
+        .broker-row.faded { opacity: 0.4; }
+        .broker-info { display: flex; align-items: center; gap: 7px; }
+        .broker-dot { font-size: 8px; line-height: 1; }
+        .broker-name { font-size: 11px; }
+        .broker-actions { display: flex; gap: 4px; }
+        .broker-action-btn {
+            font-size: 9px;
+            padding: 2px 7px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
             background: transparent;
-            border: none;
-            color: var(--text-primary);
-            font-family: var(--vscode-font-family);
-            font-size: 11px;
+            color: var(--text-secondary);
             cursor: pointer;
-            outline: none;
+            font-family: var(--vscode-font-family);
+            transition: all 0.15s;
         }
-        .provider-select option { background: var(--vscode-dropdown-background, #1e1e1e); }
+        .broker-action-btn:hover { border-color: var(--accent-color); color: var(--accent-color); }
+        .broker-action-btn.primary { border-color: var(--accent-color); color: var(--accent-color); }
+        .broker-action-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
+        .broker-soon { font-size: 9px; color: var(--text-secondary); opacity: 0.65; }
 
         /* Manual holdings form */
         .manual-form {
@@ -916,37 +998,14 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
     <div id="error" class="error" style="display: none;"></div>
     
     <div id="not-configured" class="not-configured" style="display: none;">
-        <div class="provider-bar" style="margin-bottom:16px">
-            <span class="provider-label">Source</span>
-            <select class="provider-select" id="providerSelectNC" onchange="switchProvider(this.value)">
-                <option value="manual">📋 Manual Holdings</option>
-                <option value="indmoney">IndMoney</option>
-                <option value="zerodha">Zerodha</option>
-                <option value="groww">Groww</option>
-                <option value="upstox">Upstox</option>
-            </select>
-        </div>
-        <p>🔐 Configure your broker</p>
-        <button onclick="configure()" style="margin-top: 12px;">Setup</button>
-        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-            <p style="font-size: 12px; margin-bottom: 8px;">Or analyze any stock:</p>
+    <p>⚠️ Unable to load holdings.</p>
+        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+            <p style="font-size: 12px; margin-bottom: 8px;">Analyze any stock:</p>
             <button onclick="searchStock()" style="width: 100%;">🔍 Search Stocks</button>
         </div>
     </div>
     
     <div id="content" style="display: none;">
-        <!-- Provider selector -->
-        <div class="provider-bar">
-            <span class="provider-label">Source</span>
-            <select class="provider-select" id="providerSelect" onchange="switchProvider(this.value)">
-                <option value="manual">📋 Manual Holdings</option>
-                <option value="indmoney">IndMoney</option>
-                <option value="zerodha">Zerodha</option>
-                <option value="groww">Groww</option>
-                <option value="upstox">Upstox</option>
-            </select>
-        </div>
-
         <!-- Search Button -->
         <button onclick="searchStock()" class="search-btn" style="width: 100%; margin-bottom: 12px; padding: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; background: var(--vscode-input-background); border: 1px solid var(--border-color);">
             <span style="font-size: 14px;">🔍</span>
@@ -965,8 +1024,47 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
         <!-- Manual holdings manager (only shown when manual provider is active) -->
         <div id="manualForm" class="manual-form" style="display:none">
             <div class="manual-form-header">
-                <span class="manual-form-title">📋 My Holdings</span>
-                <button class="manual-add-btn" onclick="showAddRow()">+ Add</button>
+                <span class="manual-form-title" onclick="toggleHoldingsCollapse()" style="cursor:pointer;user-select:none"><span id="holdingsChevron" style="font-size:9px;opacity:0.55;margin-right:3px">▶️</span>📋 My Holdings</span>
+                <div style="display:flex;gap:4px;align-items:center">
+                    <button class="manual-add-btn" onclick="showAddRow()">+ Add</button>
+                    <button class="import-btn" id="importBtn" onclick="toggleBrokerPicker()">↓ Import</button>
+                </div>
+            </div>
+            <div id="holdingsContent" style="display:none">
+            <!-- Broker picker (toggled by Import button) -->
+            <div id="brokerPicker" class="broker-picker" style="display:none">
+                <div class="broker-picker-title">Import from Broker</div>
+                <div class="broker-row">
+                    <div class="broker-info">
+                        <span class="broker-dot" id="dot-indmoney">⚪</span>
+                        <span class="broker-name">IndMoney</span>
+                    </div>
+                    <div class="broker-actions">
+                        <button class="broker-action-btn" id="btn-configure-indmoney" onclick="configureBroker('indmoney')">Setup</button>
+                        <button class="broker-action-btn primary" id="btn-import-indmoney" onclick="doSyncFromBroker('indmoney')" disabled>Import</button>
+                    </div>
+                </div>
+                <div class="broker-row faded">
+                    <div class="broker-info">
+                        <span class="broker-dot">⚪</span>
+                        <span class="broker-name">Zerodha</span>
+                    </div>
+                    <span class="broker-soon">Coming soon</span>
+                </div>
+                <div class="broker-row faded">
+                    <div class="broker-info">
+                        <span class="broker-dot">⚪</span>
+                        <span class="broker-name">Groww</span>
+                    </div>
+                    <span class="broker-soon">Coming soon</span>
+                </div>
+                <div class="broker-row faded">
+                    <div class="broker-info">
+                        <span class="broker-dot">⚪</span>
+                        <span class="broker-name">Upstox</span>
+                    </div>
+                    <span class="broker-soon">Coming soon</span>
+                </div>
             </div>
             <table class="manual-holdings-table" id="manualTable">
                 <thead>
@@ -993,6 +1091,7 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
                 </div>
                 <div class="manual-suggestions" id="bulkSuggestions" style="display:none"></div>
             </div>
+            </div><!-- /holdingsContent -->
         </div>
 
         <div class="section-header">
@@ -1015,7 +1114,6 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
         let _zones = {};
         let _allStocks = [];
         let _activeSort = 'zone';
-        let _activeProvider = 'indmoney';
         let _manualHoldings = [];
         let _searchDebounce = null;
         let _editingSymbol = null; // symbol currently being edited (null = adding new)
@@ -1065,8 +1163,46 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
             setTimeout(() => { btn.disabled = false; btn.textContent = '↻ Re-generate'; }, 2000);
         }
 
-        function switchProvider(id) {
-            vscode.postMessage({ type: 'switchProvider', providerId: id });
+        let _holdingsCollapsed = true;
+
+        function toggleHoldingsCollapse() {
+            _holdingsCollapsed = !_holdingsCollapsed;
+            const content = document.getElementById('holdingsContent');
+            const chevron = document.getElementById('holdingsChevron');
+            if (content) content.style.display = _holdingsCollapsed ? 'none' : 'block';
+            if (chevron) chevron.textContent = _holdingsCollapsed ? '▶️' : '▼';
+        }
+
+        let _brokerPickerOpen = false;
+
+        function toggleBrokerPicker() {
+            _brokerPickerOpen = !_brokerPickerOpen;
+            const picker = document.getElementById('brokerPicker');
+            const btn = document.getElementById('importBtn');
+            if (picker) picker.style.display = _brokerPickerOpen ? 'block' : 'none';
+            if (btn) { btn.classList.toggle('active', _brokerPickerOpen); btn.textContent = _brokerPickerOpen ? '↑ Import' : '↓ Import'; }
+        }
+
+        function configureBroker(broker) {
+            vscode.postMessage({ type: 'configureBroker', broker });
+        }
+
+        function doSyncFromBroker(broker) {
+            const btn = document.getElementById('btn-import-' + broker);
+            if (btn) { btn.disabled = true; btn.textContent = '⟳…'; }
+            vscode.postMessage({ type: 'syncFromBroker', broker });
+            setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Import'; } }, 5000);
+        }
+
+        function updateBrokerStatus(s) {
+            if (!s) return;
+            const ok = !!s.indmoney;
+            const dot = document.getElementById('dot-indmoney');
+            const cfgBtn = document.getElementById('btn-configure-indmoney');
+            const impBtn = document.getElementById('btn-import-indmoney');
+            if (dot) dot.textContent = ok ? '🟢' : '⚪';
+            if (cfgBtn) cfgBtn.textContent = ok ? 'Reconfigure' : 'Setup';
+            if (impBtn) impBtn.disabled = !ok;
         }
 
         function renderManualTable(holdings) {
@@ -1541,24 +1677,23 @@ if (v.includes('strong')) return 'strong-buy';
                     document.getElementById('error').innerHTML = '❌ ' + message.message;
                     break;
                 case 'notConfigured':
-                    _activeProvider = message.activeProvider || 'indmoney';
-                    ['providerSelect','providerSelectNC'].forEach(id => {
-                        const el = document.getElementById(id);
-                        if (el) el.value = _activeProvider;
-                    });
+                    break;
+                case 'syncStatus': {
+                    const ib = document.getElementById('btn-import-' + message.broker);
+                    if (ib && message.status !== 'syncing') { ib.disabled = false; ib.textContent = 'Import'; }
+                    break;
+                }
+                case 'brokerStatus':
+                    updateBrokerStatus(message.brokerStatus);
                     break;
                 case 'data': {
                     _zones = message.zones || {};
-                    _activeProvider = message.activeProvider || 'indmoney';
-                    // Sync provider selector
-                    const sel = document.getElementById('providerSelect');
-                    if (sel) sel.value = _activeProvider;
-                    // Show/hide manual form
                     const mf = document.getElementById('manualForm');
-                    if (mf) mf.style.display = _activeProvider === 'manual' ? 'block' : 'none';
+                    if (mf) mf.style.display = 'block';
                     renderManualTable(message.manualHoldings || []);
                     renderSummary(message.portfolio.summary, message.portfolio.stocks);
                     renderStocks(message.portfolio.stocks);
+                    updateBrokerStatus(message.brokerStatus);
                     break;
                 }
                 case 'manualSearchResults':

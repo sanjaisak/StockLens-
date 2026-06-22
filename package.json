@@ -2,7 +2,7 @@
   "name": "stocklens",
   "displayName": "StockLens",
   "description": "Comprehensive equity research and portfolio analysis with charts and multi-broker support",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "sanjaisakthivel",
   "engines": {
     "vscode": "^1.85.0"
@@ -93,40 +93,6 @@
     "configuration": {
       "title": "StockLens",
       "properties": {
-        "portfolioAnalyzer.activeProvider": {
-          "type": "string",
-          "default": "indmoney",
-          "enum": [
-            "manual",
-            "indmoney",
-            "zerodha",
-            "groww",
-            "upstox"
-          ],
-          "enumDescriptions": [
-            "Manual Holdings (enter stocks yourself)",
-            "IndMoney (INDstocks)",
-            "Zerodha (Kite)",
-            "Groww",
-            "Upstox"
-          ],
-          "description": "Select your broker/trading platform"
-        },
-        "portfolioAnalyzer.indmoney.accessToken": {
-          "type": "string",
-          "default": "",
-          "description": "IndMoney API access token"
-        },
-        "portfolioAnalyzer.zerodha.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Zerodha Kite API key"
-        },
-        "portfolioAnalyzer.zerodha.accessToken": {
-          "type": "string",
-          "default": "",
-          "description": "Zerodha Kite access token"
-        },
         "portfolioAnalyzer.autoRefresh": {
           "type": "boolean",
           "default": true,
@@ -148,11 +114,6 @@
         },
         {
           "command": "portfolioAnalyzer.showScoringInfo",
-          "when": "view == portfolioAnalyzer.dashboard",
-          "group": "navigation"
-        },
-        {
-          "command": "portfolioAnalyzer.configureProvider",
           "when": "view == portfolioAnalyzer.dashboard",
           "group": "navigation"
         },
@@ -179,6 +140,7 @@
     "package": "vsce package"
   },
   "devDependencies": {
+    "@types/json-schema": "^7.0.15",
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",

@@ -8,186 +8,186 @@ import { StockAnalysis } from "../services/AnalysisService";
 import { FundamentalData } from "../providers/IPortfolioProvider";
 
 export class StockDetailPanel {
-  public static readonly viewType = "portfolioAnalyzer.stockDetail";
+    public static readonly viewType = "portfolioAnalyzer.stockDetail";
 
-  private readonly _panel: vscode.WebviewPanel;
-  private _disposables: vscode.Disposable[] = [];
-  private _onDidDisposeEmitter = new vscode.EventEmitter<void>();
-  public readonly onDidDispose = this._onDidDisposeEmitter.event;
+    private readonly _panel: vscode.WebviewPanel;
+    private _disposables: vscode.Disposable[] = [];
+    private _onDidDisposeEmitter = new vscode.EventEmitter<void>();
+    public readonly onDidDispose = this._onDidDisposeEmitter.event;
 
-  constructor(
-    private readonly _extensionUri: vscode.Uri,
-    private readonly _context: vscode.ExtensionContext,
-    private _stock: StockAnalysis,
-  ) {
-    this._panel = vscode.window.createWebviewPanel(
-      StockDetailPanel.viewType,
-      `📈 ${_stock.symbol} Analysis`,
-      vscode.ViewColumn.One,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [this._extensionUri],
-      },
-    );
+    constructor(
+        private readonly _extensionUri: vscode.Uri,
+        private readonly _context: vscode.ExtensionContext,
+        private _stock: StockAnalysis,
+    ) {
+        this._panel = vscode.window.createWebviewPanel(
+            StockDetailPanel.viewType,
+            `📈 ${_stock.symbol} Analysis`,
+            vscode.ViewColumn.One,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [this._extensionUri],
+            },
+        );
 
-    this._panel.webview.html = this._getHtmlForWebview(this._stock);
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+        this._panel.webview.html = this._getHtmlForWebview(this._stock);
+        this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
-    // Handle messages from the webview
-    this._panel.webview.onDidReceiveMessage(
-      async (message) => {
-        if (message.type === "showScoringInfo") {
-          vscode.commands.executeCommand("portfolioAnalyzer.showScoringInfo");
-        } else if (message.type === "openUrl" && message.url) {
-          vscode.env.openExternal(vscode.Uri.parse(message.url));
-        } else if (message.type === "generateProsConsAI") {
-          const html = await this._generateProsConsWithAI(
-            message.symbol,
-            message.fundamentals,
-            message.priceTargets,
-          );
-          this._panel.webview.postMessage({ type: "prosConsResult", html });
-        } else if (message.type === "suggestPricesAI") {
-          const key = `priceTargetHistory_${message.symbol}`;
-          const history: any[] = this._context.globalState.get(key) || [];
-          const targets = await this._suggestPricesWithAI(
-            message.symbol,
-            message.stock,
-            message.fundamentals,
-            history,
-          );
-          if (targets) {
-            const { reasoning, summary, ...prices } = targets;
-            const entry = {
-              date: new Date().toISOString(),
-              priceAtSuggestion: message.stock.currentPrice,
-              targets: prices,
-              reasoning,
-              summary,
-            };
-            const today = new Date().toDateString();
-            const idx = history.findIndex(
-              (h) => new Date(h.date).toDateString() === today,
-            );
-            if (idx >= 0) {
-              history[idx] = entry; // replace today's entry
-            } else {
-              history.push(entry);
+        // Handle messages from the webview
+        this._panel.webview.onDidReceiveMessage(
+            async (message) => {
+                if (message.type === "showScoringInfo") {
+                    vscode.commands.executeCommand("portfolioAnalyzer.showScoringInfo");
+                } else if (message.type === "openUrl" && message.url) {
+                    vscode.env.openExternal(vscode.Uri.parse(message.url));
+                } else if (message.type === "generateProsConsAI") {
+                    const html = await this._generateProsConsWithAI(
+                        message.symbol,
+                        message.fundamentals,
+                        message.priceTargets,
+                    );
+                    this._panel.webview.postMessage({ type: "prosConsResult", html });
+                } else if (message.type === "suggestPricesAI") {
+                    const key = `priceTargetHistory_${message.symbol}`;
+                    const history: any[] = this._context.globalState.get(key) || [];
+                    const targets = await this._suggestPricesWithAI(
+                        message.symbol,
+                        message.stock,
+                        message.fundamentals,
+                        history,
+                    );
+                    if (targets) {
+                        const { reasoning, summary, ...prices } = targets;
+                        const entry = {
+                            date: new Date().toISOString(),
+                            priceAtSuggestion: message.stock.currentPrice,
+                            targets: prices,
+                            reasoning,
+                            summary,
+                        };
+                        const today = new Date().toDateString();
+                        const idx = history.findIndex(
+                            (h) => new Date(h.date).toDateString() === today,
+                        );
+                        if (idx >= 0) {
+                            history[idx] = entry; // replace today's entry
+                        } else {
+                            history.push(entry);
+                        }
+                        await this._context.globalState.update(key, history);
+                    }
+                    this._panel.webview.postMessage({
+                        type: "priceSuggestionsResult",
+                        targets,
+                        history: this._context.globalState.get(key) || [],
+                    });
+                } else if (message.type === "loadPriceTargets") {
+                    const key = `priceTargetHistory_${message.symbol}`;
+                    const history: any[] = this._context.globalState.get(key) || [];
+                    const latest =
+                        history.length > 0 ? history[history.length - 1].targets : null;
+                    this._panel.webview.postMessage({
+                        type: "priceTargetsLoaded",
+                        targets: latest,
+                        history,
+                    });
+                } else if (message.type === "fetchPriceHistory") {
+                    try {
+                        const yhSym = encodeURIComponent(
+                            message.symbol.replace("-EQ", "") + ".NS",
+                        );
+                        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yhSym}?interval=${message.interval}&range=${message.range}`;
+                        const res = await fetch(url);
+                        const json = (await res.json()) as any;
+                        const result = json?.chart?.result?.[0];
+                        if (!result) {
+                            throw new Error("No data returned");
+                        }
+                        this._panel.webview.postMessage({
+                            type: "priceHistoryData",
+                            timestamps: result.timestamp,
+                            closes: result.indicators?.quote?.[0]?.close,
+                        });
+                    } catch (e: any) {
+                        this._panel.webview.postMessage({
+                            type: "priceHistoryError",
+                            message: e.message || "Fetch failed",
+                        });
+                    }
+                } else if (message.type === "deleteTargetEntry") {
+                    const key = `priceTargetHistory_${message.symbol}`;
+                    const history: any[] = this._context.globalState.get(key) || [];
+                    history.splice(message.index, 1);
+                    await this._context.globalState.update(key, history);
+                    this._panel.webview.postMessage({
+                        type: "targetEntryDeleted",
+                        history,
+                    });
+                }
+            },
+            null,
+            this._disposables,
+        );
+    }
+
+    public reveal() {
+        this._panel.reveal(vscode.ViewColumn.One);
+    }
+
+    public update(stock: StockAnalysis) {
+        this._stock = stock;
+        this._panel.title = `📈 ${stock.symbol} Analysis`;
+        this._panel.webview.html = this._getHtmlForWebview(stock);
+    }
+
+    private async _generateProsConsWithAI(
+        symbol: string,
+        f: any,
+        priceTargets?: any,
+    ): Promise<string> {
+        try {
+            const models = await vscode.lm.selectChatModels({ family: "claude" });
+            const model = models[0] ?? (await vscode.lm.selectChatModels())[0];
+            if (!model) {
+                return '<p style="opacity:0.5;font-size:12px">AI analysis unavailable — no Copilot model found.</p>';
             }
-            await this._context.globalState.update(key, history);
-          }
-          this._panel.webview.postMessage({
-            type: "priceSuggestionsResult",
-            targets,
-            history: this._context.globalState.get(key) || [],
-          });
-        } else if (message.type === "loadPriceTargets") {
-          const key = `priceTargetHistory_${message.symbol}`;
-          const history: any[] = this._context.globalState.get(key) || [];
-          const latest =
-            history.length > 0 ? history[history.length - 1].targets : null;
-          this._panel.webview.postMessage({
-            type: "priceTargetsLoaded",
-            targets: latest,
-            history,
-          });
-        } else if (message.type === "fetchPriceHistory") {
-          try {
-            const yhSym = encodeURIComponent(
-              message.symbol.replace("-EQ", "") + ".NS",
-            );
-            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yhSym}?interval=${message.interval}&range=${message.range}`;
-            const res = await fetch(url);
-            const json = (await res.json()) as any;
-            const result = json?.chart?.result?.[0];
-            if (!result) {
-              throw new Error("No data returned");
-            }
-            this._panel.webview.postMessage({
-              type: "priceHistoryData",
-              timestamps: result.timestamp,
-              closes: result.indicators?.quote?.[0]?.close,
-            });
-          } catch (e: any) {
-            this._panel.webview.postMessage({
-              type: "priceHistoryError",
-              message: e.message || "Fetch failed",
-            });
-          }
-        } else if (message.type === "deleteTargetEntry") {
-          const key = `priceTargetHistory_${message.symbol}`;
-          const history: any[] = this._context.globalState.get(key) || [];
-          history.splice(message.index, 1);
-          await this._context.globalState.update(key, history);
-          this._panel.webview.postMessage({
-            type: "targetEntryDeleted",
-            history,
-          });
-        }
-      },
-      null,
-      this._disposables,
-    );
-  }
 
-  public reveal() {
-    this._panel.reveal(vscode.ViewColumn.One);
-  }
+            const addMetric = (
+                val: number | null | undefined,
+                label: string,
+                fmt: (v: number) => string,
+            ): string | null =>
+                val !== null && val !== undefined ? `${label}: ${fmt(val)}` : null;
+            const pct = (v: number) => `${v.toFixed(1)}%`;
+            const sign = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(2)}%`;
+            const metrics = [
+                addMetric(f.pe, "P/E", (v) => v.toFixed(1)),
+                addMetric(f.indPE, "Industry P/E", (v) => v.toFixed(1)),
+                addMetric(f.roe, "ROE", pct),
+                addMetric(f.roce, "ROCE", pct),
+                addMetric(f.debtToEquity, "D/E", (v) => v.toFixed(2)),
+                addMetric(f.salesGrowth3Y, "Revenue CAGR 3Y", pct),
+                addMetric(f.salesGrowth5Y, "Revenue CAGR 5Y", pct),
+                addMetric(f.profitGrowth3Y, "Profit CAGR 3Y", pct),
+                addMetric(f.profitGrowth5Y, "Profit CAGR 5Y", pct),
+                addMetric(f.salesGrowthTTM, "Revenue TTM growth", pct),
+                addMetric(f.profitGrowthTTM, "Profit TTM growth", pct),
+                addMetric(f.promoterHolding, "Promoter holding", pct),
+                addMetric(f.promoterHoldingChange, "Promoter change QoQ", sign),
+                addMetric(f.divYield, "Dividend yield", (v) => `${v.toFixed(2)}%`),
+                addMetric(f.beta, "Beta", (v) => v.toFixed(2)),
+            ]
+                .filter(Boolean)
+                .join("\n");
 
-  public update(stock: StockAnalysis) {
-    this._stock = stock;
-    this._panel.title = `📈 ${stock.symbol} Analysis`;
-    this._panel.webview.html = this._getHtmlForWebview(stock);
-  }
+            const targetsContext = priceTargets
+                ? `\nPrice Targets set by analyst:\n${Object.entries(priceTargets)
+                    .map(([k, v]) => `  ${k}: ₹${v}`)
+                    .join("\n")}`
+                : "";
 
-  private async _generateProsConsWithAI(
-    symbol: string,
-    f: any,
-    priceTargets?: any,
-  ): Promise<string> {
-    try {
-      const models = await vscode.lm.selectChatModels({ family: "claude" });
-      const model = models[0] ?? (await vscode.lm.selectChatModels())[0];
-      if (!model) {
-        return '<p style="opacity:0.5;font-size:12px">AI analysis unavailable — no Copilot model found.</p>';
-      }
-
-      const addMetric = (
-        val: number | null | undefined,
-        label: string,
-        fmt: (v: number) => string,
-      ): string | null =>
-        val !== null && val !== undefined ? `${label}: ${fmt(val)}` : null;
-      const pct = (v: number) => `${v.toFixed(1)}%`;
-      const sign = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(2)}%`;
-      const metrics = [
-        addMetric(f.pe, "P/E", (v) => v.toFixed(1)),
-        addMetric(f.indPE, "Industry P/E", (v) => v.toFixed(1)),
-        addMetric(f.roe, "ROE", pct),
-        addMetric(f.roce, "ROCE", pct),
-        addMetric(f.debtToEquity, "D/E", (v) => v.toFixed(2)),
-        addMetric(f.salesGrowth3Y, "Revenue CAGR 3Y", pct),
-        addMetric(f.salesGrowth5Y, "Revenue CAGR 5Y", pct),
-        addMetric(f.profitGrowth3Y, "Profit CAGR 3Y", pct),
-        addMetric(f.profitGrowth5Y, "Profit CAGR 5Y", pct),
-        addMetric(f.salesGrowthTTM, "Revenue TTM growth", pct),
-        addMetric(f.profitGrowthTTM, "Profit TTM growth", pct),
-        addMetric(f.promoterHolding, "Promoter holding", pct),
-        addMetric(f.promoterHoldingChange, "Promoter change QoQ", sign),
-        addMetric(f.divYield, "Dividend yield", (v) => `${v.toFixed(2)}%`),
-        addMetric(f.beta, "Beta", (v) => v.toFixed(2)),
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const targetsContext = priceTargets
-        ? `\nPrice Targets set by analyst:\n${Object.entries(priceTargets)
-            .map(([k, v]) => `  ${k}: ₹${v}`)
-            .join("\n")}`
-        : "";
-
-      const prompt = `You are a concise Indian equity analyst. Based ONLY on the metrics below for ${symbol}, generate exactly 3 strengths and 3 concerns. Be specific to these numbers — no generic statements. Consider the price targets if provided — if current price is near or above Strong Buy, mention it as a strength; if near or above Reduce, mention it as a concern.
+            const prompt = `You are a concise Indian equity analyst. Based ONLY on the metrics below for ${symbol}, generate exactly 3 strengths and 3 concerns. Be specific to these numbers — no generic statements. Consider the price targets if provided — if current price is near or above Strong Buy, mention it as a strength; if near or above Reduce, mention it as a concern.
 
 Metrics:
 ${metrics}${targetsContext}
@@ -195,21 +195,21 @@ ${metrics}${targetsContext}
 Respond in this exact JSON format (no markdown):
 {"pros":["...","...","..."],"cons":["...","...","..."]}`;
 
-      const messages = [vscode.LanguageModelChatMessage.User(prompt)];
-      const response = await model.sendRequest(messages, {});
+            const messages = [vscode.LanguageModelChatMessage.User(prompt)];
+            const response = await model.sendRequest(messages, {});
 
-      let text = "";
-      for await (const chunk of response.stream) {
-        if (chunk instanceof vscode.LanguageModelTextPart) {
-          text += chunk.value;
-        }
-      }
+            let text = "";
+            for await (const chunk of response.stream) {
+                if (chunk instanceof vscode.LanguageModelTextPart) {
+                    text += chunk.value;
+                }
+            }
 
-      const parsed = JSON.parse(text.trim());
-      const pros: string[] = parsed.pros || [];
-      const cons: string[] = parsed.cons || [];
+            const parsed = JSON.parse(text.trim());
+            const pros: string[] = parsed.pros || [];
+            const cons: string[] = parsed.cons || [];
 
-      return `<div class="pros-cons-grid">
+            return `<div class="pros-cons-grid">
                 <div class="pros">
                     <h4>✅ Strengths</h4>
                     <ul class="pros-cons-list">${pros.map((p) => `<li>${p}</li>`).join("")}</ul>
@@ -219,64 +219,64 @@ Respond in this exact JSON format (no markdown):
                     <ul class="pros-cons-list">${cons.map((c) => `<li>${c}</li>`).join("")}</ul>
                 </div>
             </div>`;
-    } catch (e: unknown) {
-      console.error("AI pros/cons generation failed:", e);
-      return '<p style="opacity:0.5;font-size:12px">AI analysis could not be generated.</p>';
+        } catch (e: unknown) {
+            console.error("AI pros/cons generation failed:", e);
+            return '<p style="opacity:0.5;font-size:12px">AI analysis could not be generated.</p>';
+        }
     }
-  }
 
-  private async _suggestPricesWithAI(
-    symbol: string,
-    stock: any,
-    f: any,
-    history: any[] = [],
-  ): Promise<any> {
-    try {
-      const models = await vscode.lm.selectChatModels({ family: "claude" });
-      const model = models[0] ?? (await vscode.lm.selectChatModels())[0];
-      if (!model) {
-        return null;
-      }
+    private async _suggestPricesWithAI(
+        symbol: string,
+        stock: any,
+        f: any,
+        history: any[] = [],
+    ): Promise<any> {
+        try {
+            const models = await vscode.lm.selectChatModels({ family: "claude" });
+            const model = models[0] ?? (await vscode.lm.selectChatModels())[0];
+            if (!model) {
+                return null;
+            }
 
-      const addMetric = (
-        val: number | null | undefined,
-        label: string,
-        fmt: (v: number) => string,
-      ): string | null =>
-        val !== null && val !== undefined ? `${label}: ${fmt(val)}` : null;
-      const pct = (v: number) => `${v.toFixed(1)}%`;
+            const addMetric = (
+                val: number | null | undefined,
+                label: string,
+                fmt: (v: number) => string,
+            ): string | null =>
+                val !== null && val !== undefined ? `${label}: ${fmt(val)}` : null;
+            const pct = (v: number) => `${v.toFixed(1)}%`;
 
-      const metrics = [
-        `Current Price: ₹${stock.currentPrice?.toFixed(2)}`,
-        `Total Score: ${stock.totalScore}/10`,
-        `Verdict: ${stock.verdict}`,
-        addMetric(f.pe, "P/E", (v) => v.toFixed(1)),
-        addMetric(f.indPE, "Industry P/E", (v) => v.toFixed(1)),
-        addMetric(f.eps, "EPS", (v) => `₹${v.toFixed(2)}`),
-        addMetric(f.bookValue, "Book Value", (v) => `₹${v.toFixed(2)}`),
-        addMetric(f.roe, "ROE", pct),
-        addMetric(f.roce, "ROCE", pct),
-        addMetric(f.debtToEquity, "D/E", (v) => v.toFixed(2)),
-        addMetric(f.salesGrowth3Y, "Revenue CAGR 3Y", pct),
-        addMetric(f.profitGrowth3Y, "Profit CAGR 3Y", pct),
-        addMetric(f.profitGrowth5Y, "Profit CAGR 5Y", pct),
-        addMetric(f.promoterHolding, "Promoter holding", pct),
-        stock.scores?.valuation != null
-          ? `Valuation score: ${stock.scores.valuation}/10`
-          : null,
-        stock.scores?.revenueGrowth != null
-          ? `Growth score: ${stock.scores.revenueGrowth}/10`
-          : null,
-        stock.scores?.risk != null
-          ? `Risk score: ${stock.scores.risk}/10`
-          : null,
-        addMetric(stock.high52w, "52W High", (v) => `₹${v.toFixed(2)}`),
-        addMetric(stock.low52w, "52W Low", (v) => `₹${v.toFixed(2)}`),
-      ]
-        .filter(Boolean)
-        .join("\n");
+            const metrics = [
+                `Current Price: ₹${stock.currentPrice?.toFixed(2)}`,
+                `Total Score: ${stock.totalScore}/10`,
+                `Verdict: ${stock.verdict}`,
+                addMetric(f.pe, "P/E", (v) => v.toFixed(1)),
+                addMetric(f.indPE, "Industry P/E", (v) => v.toFixed(1)),
+                addMetric(f.eps, "EPS", (v) => `₹${v.toFixed(2)}`),
+                addMetric(f.bookValue, "Book Value", (v) => `₹${v.toFixed(2)}`),
+                addMetric(f.roe, "ROE", pct),
+                addMetric(f.roce, "ROCE", pct),
+                addMetric(f.debtToEquity, "D/E", (v) => v.toFixed(2)),
+                addMetric(f.salesGrowth3Y, "Revenue CAGR 3Y", pct),
+                addMetric(f.profitGrowth3Y, "Profit CAGR 3Y", pct),
+                addMetric(f.profitGrowth5Y, "Profit CAGR 5Y", pct),
+                addMetric(f.promoterHolding, "Promoter holding", pct),
+                stock.scores?.valuation != null
+                    ? `Valuation score: ${stock.scores.valuation}/10`
+                    : null,
+                stock.scores?.revenueGrowth != null
+                    ? `Growth score: ${stock.scores.revenueGrowth}/10`
+                    : null,
+                stock.scores?.risk != null
+                    ? `Risk score: ${stock.scores.risk}/10`
+                    : null,
+                addMetric(stock.high52w, "52W High", (v) => `₹${v.toFixed(2)}`),
+                addMetric(stock.low52w, "52W Low", (v) => `₹${v.toFixed(2)}`),
+            ]
+                .filter(Boolean)
+                .join("\n");
 
-      const prompt = `You are a precise Indian equity analyst. Based on the metrics below for ${symbol}, suggest exact rupee price targets for 5 levels.
+            const prompt = `You are a precise Indian equity analyst. Based on the metrics below for ${symbol}, suggest exact rupee price targets for 5 levels.
 
 Rules:
 - Strong Buy: price at which the stock is deeply undervalued — a high-conviction entry. Must be BELOW current price.
@@ -289,184 +289,183 @@ Derive each price from the actual metrics (use P/E, EPS, book value, growth rate
 
 Metrics:
 ${metrics}
-${
-  history.length > 0
-    ? `
+${history.length > 0
+                    ? `
 Previous AI suggestions for ${symbol} (use these for context — understand how the stock has moved since last suggestion and adjust accordingly):
 ${history
-  .slice(-5)
-  .map((h: any) => {
-    const d = new Date(h.date).toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-    const t = h.targets;
-    return `  [${d} @ ₹${h.priceAtSuggestion?.toFixed(0)}] Strong Buy: ₹${t.strongBuy}  Buy: ₹${t.buy}  Consider: ₹${t.consider}  Fair: ₹${t.fair}  Reduce: ₹${t.reduce}`;
-  })
-  .join("\n")}
+                        .slice(-5)
+                        .map((h: any) => {
+                            const d = new Date(h.date).toLocaleDateString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                            });
+                            const t = h.targets;
+                            return `  [${d} @ ₹${h.priceAtSuggestion?.toFixed(0)}] Strong Buy: ₹${t.strongBuy}  Buy: ₹${t.buy}  Consider: ₹${t.consider}  Fair: ₹${t.fair}  Reduce: ₹${t.reduce}`;
+                        })
+                        .join("\n")}
 Current price is ₹${stock.currentPrice?.toFixed(2)} — adjust targets if the stock has moved significantly since last suggestion.`
-    : ""
-}
+                    : ""
+                }
 
 Respond ONLY in this exact JSON (no markdown, no extra text):
 {"strongBuy":0,"buy":0,"consider":0,"fair":0,"reduce":0,"summary":"2-3 plain sentences a beginner can understand — explain whether the stock is cheap or expensive right now, what price range makes sense to buy, and one honest opinion on the stock. No jargon. Example: 'TCS is a strong company but currently trading at a premium. At current prices the upside is limited — a better buying opportunity would be around ₹3,200–3,400. Wait for a dip rather than buying now.'","reasoning":{"strongBuy":"one sentence why","buy":"one sentence why","consider":"one sentence why","fair":"one sentence why","reduce":"one sentence why"}}`;
 
-      const response = await model.sendRequest(
-        [vscode.LanguageModelChatMessage.User(prompt)],
-        {},
-      );
-      let text = "";
-      for await (const chunk of response.stream) {
-        if (chunk instanceof vscode.LanguageModelTextPart) {
-          text += chunk.value;
+            const response = await model.sendRequest(
+                [vscode.LanguageModelChatMessage.User(prompt)],
+                {},
+            );
+            let text = "";
+            for await (const chunk of response.stream) {
+                if (chunk instanceof vscode.LanguageModelTextPart) {
+                    text += chunk.value;
+                }
+            }
+
+            // Extract the outermost JSON object (handles nested reasoning object)
+            const start = text.indexOf("{");
+            const end = text.lastIndexOf("}");
+            if (start === -1 || end === -1) {
+                return null;
+            }
+            const parsed = JSON.parse(text.slice(start, end + 1));
+
+            // Validate — all price levels must be positive numbers
+            const keys = ["strongBuy", "buy", "consider", "fair", "reduce"];
+            for (const k of keys) {
+                if (typeof parsed[k] !== "number" || parsed[k] <= 0) {
+                    return null;
+                }
+                parsed[k] = Math.round(parsed[k] * 100) / 100;
+            }
+            return parsed;
+        } catch (e: unknown) {
+            console.error("AI price suggestion failed:", e);
+            return null;
         }
-      }
+    }
 
-      // Extract the outermost JSON object (handles nested reasoning object)
-      const start = text.indexOf("{");
-      const end = text.lastIndexOf("}");
-      if (start === -1 || end === -1) {
-        return null;
-      }
-      const parsed = JSON.parse(text.slice(start, end + 1));
+    /**
+     * Generate AI price targets for a stock and save to globalState.
+     * Used by sidebar refresh to auto-generate for stocks with no entry today.
+     */
+    public static async generateAndSaveTargets(
+        context: vscode.ExtensionContext,
+        stock: StockAnalysis,
+    ): Promise<any | null> {
+        const key = `priceTargetHistory_${stock.symbol}`;
+        const history: any[] = context.globalState.get(key) || [];
 
-      // Validate — all price levels must be positive numbers
-      const keys = ["strongBuy", "buy", "consider", "fair", "reduce"];
-      for (const k of keys) {
-        if (typeof parsed[k] !== "number" || parsed[k] <= 0) {
-          return null;
+        // Skip if already generated today
+        const today = new Date().toDateString();
+        if (history.some((h) => new Date(h.date).toDateString() === today)) {
+            return history[history.length - 1].targets;
         }
-        parsed[k] = Math.round(parsed[k] * 100) / 100;
-      }
-      return parsed;
-    } catch (e: unknown) {
-      console.error("AI price suggestion failed:", e);
-      return null;
+
+        try {
+            const models = await vscode.lm.selectChatModels({ family: "claude" });
+            const model = models[0] ?? (await vscode.lm.selectChatModels())[0];
+            if (!model) return null;
+
+            const f = stock.fundamentals;
+            const pct = (v: number) => `${v.toFixed(1)}%`;
+            const addMetric = (val: number | null | undefined, label: string, fmt: (v: number) => string): string | null =>
+                val !== null && val !== undefined ? `${label}: ${fmt(val)}` : null;
+
+            const metrics = [
+                `Current Price: ₹${stock.currentPrice?.toFixed(2)}`,
+                `Total Score: ${stock.totalScore}/10`,
+                `Verdict: ${stock.verdict}`,
+                addMetric(f?.pe, "P/E", (v) => v.toFixed(1)),
+                addMetric(f?.indPE, "Industry P/E", (v) => v.toFixed(1)),
+                addMetric(f?.eps, "EPS", (v) => `₹${v.toFixed(2)}`),
+                addMetric(f?.bookValue, "Book Value", (v) => `₹${v.toFixed(2)}`),
+                addMetric(f?.roe, "ROE", pct),
+                addMetric(f?.roce, "ROCE", pct),
+                addMetric(f?.debtToEquity, "D/E", (v) => v.toFixed(2)),
+                addMetric(f?.salesGrowth3Y, "Revenue CAGR 3Y", pct),
+                addMetric(f?.profitGrowth3Y, "Profit CAGR 3Y", pct),
+                addMetric(f?.promoterHolding, "Promoter holding", pct),
+                addMetric(stock.high52w, "52W High", (v) => `₹${v.toFixed(2)}`),
+                addMetric(stock.low52w, "52W Low", (v) => `₹${v.toFixed(2)}`),
+            ].filter(Boolean).join("\n");
+
+            const histCtx = history.length > 0
+                ? `\nPrevious suggestions:\n${history.slice(-3).map((h: any) => {
+                    const d = new Date(h.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                    const t = h.targets;
+                    return `  [${d} @ ₹${h.priceAtSuggestion?.toFixed(0)}] Strong Buy: ₹${t.strongBuy}  Buy: ₹${t.buy}  Consider: ₹${t.consider}  Fair: ₹${t.fair}  Reduce: ₹${t.reduce}`;
+                }).join("\n")}\nCurrent price is ₹${stock.currentPrice?.toFixed(2)} — adjust if stock moved significantly.`
+                : "";
+
+            const prompt = `You are a precise Indian equity analyst. Based on the metrics below for ${stock.symbol}, suggest exact rupee price targets for 5 levels.\n\nRules:\n- Strong Buy: deeply undervalued, high-conviction entry. Must be BELOW current price.\n- Buy: good value entry. Below or near current price.\n- Consider: fair entry zone. Close to current price.\n- Fair Value: intrinsic value estimate. Can be above or below current price.\n- Reduce: expensive, trim here. ABOVE current price.\n\nDerive each price from the actual metrics.\n\nMetrics:\n${metrics}${histCtx}\n\nRespond ONLY in this exact JSON (no markdown):\n{"strongBuy":0,"buy":0,"consider":0,"fair":0,"reduce":0,"summary":"2-3 plain sentences","reasoning":{"strongBuy":"one sentence","buy":"one sentence","consider":"one sentence","fair":"one sentence","reduce":"one sentence"}}`;
+
+            const response = await model.sendRequest(
+                [vscode.LanguageModelChatMessage.User(prompt)], {},
+            );
+            let text = "";
+            for await (const chunk of response.stream) {
+                if (chunk instanceof vscode.LanguageModelTextPart) text += chunk.value;
+            }
+
+            const start = text.indexOf("{");
+            const end = text.lastIndexOf("}");
+            if (start === -1 || end === -1) return null;
+            const parsed = JSON.parse(text.slice(start, end + 1));
+
+            const priceKeys = ["strongBuy", "buy", "consider", "fair", "reduce"];
+            for (const k of priceKeys) {
+                if (typeof parsed[k] !== "number" || parsed[k] <= 0) return null;
+                parsed[k] = Math.round(parsed[k] * 100) / 100;
+            }
+
+            const { reasoning, summary, ...prices } = parsed;
+            const entry = {
+                date: new Date().toISOString(),
+                priceAtSuggestion: stock.currentPrice,
+                targets: prices,
+                reasoning,
+                summary,
+            };
+
+            const idx = history.findIndex((h) => new Date(h.date).toDateString() === today);
+            if (idx >= 0) { history[idx] = entry; } else { history.push(entry); }
+            await context.globalState.update(key, history);
+
+            return prices;
+        } catch (e) {
+            console.error(`AI target generation failed for ${stock.symbol}:`, e);
+            return null;
+        }
     }
-  }
 
-  /**
-   * Generate AI price targets for a stock and save to globalState.
-   * Used by sidebar refresh to auto-generate for stocks with no entry today.
-   */
-  public static async generateAndSaveTargets(
-    context: vscode.ExtensionContext,
-    stock: StockAnalysis,
-  ): Promise<any | null> {
-    const key = `priceTargetHistory_${stock.symbol}`;
-    const history: any[] = context.globalState.get(key) || [];
-
-    // Skip if already generated today
-    const today = new Date().toDateString();
-    if (history.some((h) => new Date(h.date).toDateString() === today)) {
-      return history[history.length - 1].targets;
+    public dispose() {
+        this._panel.dispose();
+        while (this._disposables.length) {
+            const d = this._disposables.pop();
+            if (d) d.dispose();
+        }
+        this._onDidDisposeEmitter.fire();
     }
 
-    try {
-      const models = await vscode.lm.selectChatModels({ family: "claude" });
-      const model = models[0] ?? (await vscode.lm.selectChatModels())[0];
-      if (!model) return null;
+    private _getHtmlForWebview(stock: StockAnalysis): string {
+        const f: Partial<FundamentalData> = stock.fundamentals || {};
+        const stockJson = JSON.stringify(stock);
 
-      const f = stock.fundamentals;
-      const pct = (v: number) => `${v.toFixed(1)}%`;
-      const addMetric = (val: number | null | undefined, label: string, fmt: (v: number) => string): string | null =>
-        val !== null && val !== undefined ? `${label}: ${fmt(val)}` : null;
+        // Helper function to render trend badge
+        const renderTrendBadge = (change: number | null | undefined): string => {
+            if (change === null || change === undefined) {
+                return '<span class="holding-trend neutral">--</span>';
+            }
+            if (change > 0) {
+                return `<span class="holding-trend up">▲ +${change.toFixed(1)}%</span>`;
+            } else if (change < 0) {
+                return `<span class="holding-trend down">▼ ${change.toFixed(1)}%</span>`;
+            }
+            return '<span class="holding-trend neutral">→ 0%</span>';
+        };
 
-      const metrics = [
-        `Current Price: ₹${stock.currentPrice?.toFixed(2)}`,
-        `Total Score: ${stock.totalScore}/10`,
-        `Verdict: ${stock.verdict}`,
-        addMetric(f?.pe, "P/E", (v) => v.toFixed(1)),
-        addMetric(f?.indPE, "Industry P/E", (v) => v.toFixed(1)),
-        addMetric(f?.eps, "EPS", (v) => `₹${v.toFixed(2)}`),
-        addMetric(f?.bookValue, "Book Value", (v) => `₹${v.toFixed(2)}`),
-        addMetric(f?.roe, "ROE", pct),
-        addMetric(f?.roce, "ROCE", pct),
-        addMetric(f?.debtToEquity, "D/E", (v) => v.toFixed(2)),
-        addMetric(f?.salesGrowth3Y, "Revenue CAGR 3Y", pct),
-        addMetric(f?.profitGrowth3Y, "Profit CAGR 3Y", pct),
-        addMetric(f?.promoterHolding, "Promoter holding", pct),
-        addMetric(stock.high52w, "52W High", (v) => `₹${v.toFixed(2)}`),
-        addMetric(stock.low52w, "52W Low", (v) => `₹${v.toFixed(2)}`),
-      ].filter(Boolean).join("\n");
-
-      const histCtx = history.length > 0
-        ? `\nPrevious suggestions:\n${history.slice(-3).map((h: any) => {
-            const d = new Date(h.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-            const t = h.targets;
-            return `  [${d} @ ₹${h.priceAtSuggestion?.toFixed(0)}] Strong Buy: ₹${t.strongBuy}  Buy: ₹${t.buy}  Consider: ₹${t.consider}  Fair: ₹${t.fair}  Reduce: ₹${t.reduce}`;
-          }).join("\n")}\nCurrent price is ₹${stock.currentPrice?.toFixed(2)} — adjust if stock moved significantly.`
-        : "";
-
-      const prompt = `You are a precise Indian equity analyst. Based on the metrics below for ${stock.symbol}, suggest exact rupee price targets for 5 levels.\n\nRules:\n- Strong Buy: deeply undervalued, high-conviction entry. Must be BELOW current price.\n- Buy: good value entry. Below or near current price.\n- Consider: fair entry zone. Close to current price.\n- Fair Value: intrinsic value estimate. Can be above or below current price.\n- Reduce: expensive, trim here. ABOVE current price.\n\nDerive each price from the actual metrics.\n\nMetrics:\n${metrics}${histCtx}\n\nRespond ONLY in this exact JSON (no markdown):\n{"strongBuy":0,"buy":0,"consider":0,"fair":0,"reduce":0,"summary":"2-3 plain sentences","reasoning":{"strongBuy":"one sentence","buy":"one sentence","consider":"one sentence","fair":"one sentence","reduce":"one sentence"}}`;
-
-      const response = await model.sendRequest(
-        [vscode.LanguageModelChatMessage.User(prompt)], {},
-      );
-      let text = "";
-      for await (const chunk of response.stream) {
-        if (chunk instanceof vscode.LanguageModelTextPart) text += chunk.value;
-      }
-
-      const start = text.indexOf("{");
-      const end = text.lastIndexOf("}");
-      if (start === -1 || end === -1) return null;
-      const parsed = JSON.parse(text.slice(start, end + 1));
-
-      const priceKeys = ["strongBuy", "buy", "consider", "fair", "reduce"];
-      for (const k of priceKeys) {
-        if (typeof parsed[k] !== "number" || parsed[k] <= 0) return null;
-        parsed[k] = Math.round(parsed[k] * 100) / 100;
-      }
-
-      const { reasoning, summary, ...prices } = parsed;
-      const entry = {
-        date: new Date().toISOString(),
-        priceAtSuggestion: stock.currentPrice,
-        targets: prices,
-        reasoning,
-        summary,
-      };
-
-      const idx = history.findIndex((h) => new Date(h.date).toDateString() === today);
-      if (idx >= 0) { history[idx] = entry; } else { history.push(entry); }
-      await context.globalState.update(key, history);
-
-      return prices;
-    } catch (e) {
-      console.error(`AI target generation failed for ${stock.symbol}:`, e);
-      return null;
-    }
-  }
-
-  public dispose() {
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const d = this._disposables.pop();
-      if (d) d.dispose();
-    }
-    this._onDidDisposeEmitter.fire();
-  }
-
-  private _getHtmlForWebview(stock: StockAnalysis): string {
-    const f: Partial<FundamentalData> = stock.fundamentals || {};
-    const stockJson = JSON.stringify(stock);
-
-    // Helper function to render trend badge
-    const renderTrendBadge = (change: number | null | undefined): string => {
-      if (change === null || change === undefined) {
-        return '<span class="holding-trend neutral">--</span>';
-      }
-      if (change > 0) {
-        return `<span class="holding-trend up">▲ +${change.toFixed(1)}%</span>`;
-      } else if (change < 0) {
-        return `<span class="holding-trend down">▼ ${change.toFixed(1)}%</span>`;
-      }
-      return '<span class="holding-trend neutral">→ 0%</span>';
-    };
-
-    return `<!DOCTYPE html>
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1346,8 +1345,7 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
             <h1>📈 ${stock.symbol}</h1>
             <div class="name">${stock.name}</div>
             <span class="sector">${f.sector || stock.sector || "Equity"}</span>
-            ${
-              f.description
+            ${f.description
                 ? `
             <p class="header-description" id="headerDesc">${f.description}</p>
             <span class="desc-toggle" id="descToggle" onclick="toggleDesc()">more ▾</span>
@@ -1360,8 +1358,7 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
             <div class="price-change ${stock.dayChangePct >= 0 ? "positive" : "negative"}">
                 ${stock.dayChangePct >= 0 ? "▲" : "▼"} ₹${Math.abs(stock.dayChange).toFixed(2)} (${stock.dayChangePct >= 0 ? "+" : ""}${stock.dayChangePct.toFixed(2)}%)
             </div>
-            ${
-              stock.quantity > 0
+            ${stock.quantity > 0
                 ? `
             <div class="header-pnl-row">
                 <div class="header-pnl-item">
@@ -1407,8 +1404,7 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
     <main class="main-content">
         <!-- Position Summary -->
         <div class="grid-4">
-            ${
-              stock.quantity > 0
+            ${stock.quantity > 0
                 ? `
             <div class="card highlight">
                 <h3>💰 Your Position</h3>
@@ -1455,9 +1451,8 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
                         ${getPEIndicator(f.pe, f.indPE)}
                     </div>
                 </div>
-                ${
-                  f.medianPE
-                    ? `
+                ${f.medianPE
+                ? `
                 <div class="valuation-row">
                     <div class="valuation-left">
                         <span class="valuation-label tooltip" data-tip="5-Year Median P/E — the middle P/E value over 5 years. Helps assess if current valuation is cheap or expensive vs historical norm.">5Y Median P/E <span class="tooltip-icon">ⓘ</span></span>
@@ -1469,8 +1464,8 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
                     </div>
                 </div>
                 `
-                    : ""
-                }
+                : ""
+            }
                 <div class="valuation-row">
                     <div class="valuation-left">
                         <span class="valuation-label tooltip" data-tip="Price-to-Book Ratio — compares stock price to book value (assets minus liabilities). P/B < 1 may indicate undervaluation, P/B > 3 may suggest overvaluation.">P/B Ratio <span class="tooltip-icon">ⓘ</span></span>
@@ -1498,9 +1493,8 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
                         <span class="valuation-value">${f.marketCap ? formatCurrency(f.marketCap * 10000000) : "N/A"}</span>
                     </div>
                 </div>
-                ${
-                  f.pe && f.indPE
-                    ? `
+                ${f.pe && f.indPE
+                ? `
                 <div class="pe-bar">
                     <div class="pe-bar-header">
                         <span>P/E vs Industry</span>
@@ -1516,8 +1510,8 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
                     </div>
                 </div>
                 `
-                    : ""
-                }
+                : ""
+            }
             </div>
             
             <div class="card">
@@ -1551,51 +1545,45 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
             <div class="card">
                 <h3>📉 Returns & Risk</h3>
 
-                ${
-                  f.roe != null
-                    ? `<div class="stat-row">
+                ${f.roe != null
+                ? `<div class="stat-row">
                     <span class="label tooltip" data-tip="Return on Equity — profit per ₹100 of shareholders' money. >15% good, >20% excellent.">ROE <span class="tooltip-icon">ⓘ</span></span>
                     <span class="value ${f.roe >= 15 ? "positive" : f.roe >= 10 ? "warning-text" : "negative"}">${f.roe.toFixed(1)}% <span class="status-tag">${f.roe >= 20 ? "● Excellent" : f.roe >= 15 ? "● Good" : f.roe >= 10 ? "● Average" : "● Weak"}</span></span>
                 </div>`
-                    : ""
-                }
-                ${
-                  f.roce != null
-                    ? `<div class="stat-row">
+                : ""
+            }
+                ${f.roce != null
+                ? `<div class="stat-row">
                     <span class="label tooltip" data-tip="Return on Capital Employed — profit per ₹100 of total capital. >15% good.">ROCE <span class="tooltip-icon">ⓘ</span></span>
                     <span class="value ${f.roce >= 15 ? "positive" : f.roce >= 10 ? "warning-text" : "negative"}">${f.roce.toFixed(1)}% <span class="status-tag">${f.roce >= 20 ? "● Excellent" : f.roce >= 15 ? "● Good" : f.roce >= 10 ? "● Average" : "● Weak"}</span></span>
                 </div>`
-                    : ""
-                }
-                ${
-                  f.debtToEquity != null
-                    ? `<div class="stat-row">
+                : ""
+            }
+                ${f.debtToEquity != null
+                ? `<div class="stat-row">
                     <span class="label tooltip" data-tip="Debt-to-Equity — total debt vs shareholders' equity. <0.5 low risk, >1 high risk.">Debt/Equity <span class="tooltip-icon">ⓘ</span></span>
                     <span class="value ${f.debtToEquity < 0.5 ? "positive" : f.debtToEquity < 1 ? "warning-text" : "negative"}">${f.debtToEquity.toFixed(2)} <span class="status-tag">${f.debtToEquity < 0.5 ? "● Low debt" : f.debtToEquity < 1 ? "● Moderate" : "● High debt"}</span></span>
                 </div>`
-                    : ""
-                }
-                ${
-                  f.divYield != null
-                    ? `<div class="stat-row">
+                : ""
+            }
+                ${f.divYield != null
+                ? `<div class="stat-row">
                     <span class="label tooltip" data-tip="Dividend Yield — annual dividend as % of stock price. >2% decent for Indian stocks.">Dividend Yield <span class="tooltip-icon">ⓘ</span></span>
                     <span class="value ${f.divYield >= 2 ? "positive" : f.divYield > 0 ? "warning-text" : ""}">${f.divYield.toFixed(2)}% <span class="status-tag">${f.divYield >= 3 ? "● High income" : f.divYield >= 1 ? "● Moderate" : "● Low"}</span></span>
                 </div>`
-                    : ""
-                }
-                ${
-                  f.beta != null
-                    ? `<div class="stat-row">
+                : ""
+            }
+                ${f.beta != null
+                ? `<div class="stat-row">
                     <span class="label tooltip" data-tip="Beta — volatility vs market. <1 defensive, ~1 market-like, >1 aggressive.">Beta <span class="tooltip-icon">ⓘ</span></span>
                     <span class="value ${f.beta <= 0.8 ? "positive" : f.beta <= 1.2 ? "warning-text" : "negative"}">${f.beta.toFixed(2)} <span class="status-tag">${f.beta <= 0.8 ? "● Defensive" : f.beta <= 1.2 ? "● Market-like" : "● High risk"}</span></span>
                 </div>`
-                    : ""
-                }
+                : ""
+            }
 
                 <!-- 52W Range bar -->
-                ${
-                  stock.low52w && stock.high52w
-                    ? `
+                ${stock.low52w && stock.high52w
+                ? `
                 <div class="range-52w" style="margin-top:16px">
                     <div class="range-header">
                         <span class="tooltip" data-tip="52-Week Range — lowest and highest price over the last year. Near 52W low = possible value, near 52W high = momentum or expensive.">52-Week Range <span class="tooltip-icon">ⓘ</span></span>
@@ -1609,8 +1597,8 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
                         <span class="high">₹${stock.high52w.toFixed(0)}<br><span style="font-size:9px;opacity:0.5">52W High</span></span>
                     </div>
                 </div>`
-                    : ""
-                }
+                : ""
+            }
             </div>
         </div>
         
@@ -1735,9 +1723,8 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
         <div class="card">
             <h3>⚖️ Strengths & Concerns</h3>
             <div id="prosConsContent">
-                ${
-                  f.pros?.length || f.cons?.length
-                    ? `
+                ${f.pros?.length || f.cons?.length
+                ? `
                 <div class="pros-cons-grid">
                     <div class="pros">
                         <h4>✅ Strengths</h4>
@@ -1753,25 +1740,24 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
                     </div>
                 </div>
                 `
-                    : `<div class="ai-loading" id="aiLoading">
+                : `<div class="ai-loading" id="aiLoading">
                     <span class="ai-spinner"></span> Generating AI analysis…
                 </div>
                 <div id="aiProsConsResult" style="display:none"></div>`
-                }
+            }
             </div>
         </div>
 
         <!-- Returns Prediction — only show if CAGR data exists -->
-        ${
-          (f.salesGrowth5Y ??
-            f.salesGrowth3Y ??
-            f.profitGrowth5Y ??
-            f.profitGrowth3Y) !== null &&
-          (f.salesGrowth5Y ??
-            f.salesGrowth3Y ??
-            f.profitGrowth5Y ??
-            f.profitGrowth3Y) !== undefined
-            ? `
+        ${(f.salesGrowth5Y ??
+                f.salesGrowth3Y ??
+                f.profitGrowth5Y ??
+                f.profitGrowth3Y) !== null &&
+                (f.salesGrowth5Y ??
+                    f.salesGrowth3Y ??
+                    f.profitGrowth5Y ??
+                    f.profitGrowth3Y) !== undefined
+                ? `
         <div class="card">
             <h3>🔮 Projected Returns (Based on Historical Growth)</h3>
 
@@ -1786,12 +1772,12 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
             </div>
 
             <div class="prediction-disclaimer">
-                ⚠️ <strong>Disclaimer:</strong> Moderate scenario uses avg of Revenue 5Y CAGR (${f.salesGrowth5Y?.toFixed(1) ?? f.salesGrowth3Y?.toFixed(1) ?? "N/A"}%) and Profit 5Y CAGR (${f.profitGrowth5Y?.toFixed(1) ?? f.profitGrowth3Y?.toFixed(1) ?? "N/A"}%) — same figures shown in Growth Metrics. Actual returns may vary significantly. Not financial advice.
+                ⚠️ <strong>Disclaimer:</strong> Model: EPS Growth (Profit CAGR ${(f.profitGrowth5Y ?? f.profitGrowth3Y)?.toFixed(1) ?? "N/A"}%, blended with 12% long-term rate) × P/E normalization${f.pe && f.medianPE ? ` (current ${f.pe.toFixed(0)}× → median ${f.medianPE.toFixed(0)}×)` : ""}. Conservative scenario assumes faster P/E mean-reversion; optimistic assumes slower. Revenue CAGR used only as fallback when profit data is unavailable. Not financial advice.
             </div>
         </div>
         `
-            : ""
-        }
+                : ""
+            }
     </main>
     
     <footer class="footer">
@@ -1944,7 +1930,7 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
                 else                                      { zoneColor = zoneMap.aboveReduce.color; zoneBg = zoneMap.aboveReduce.bg; }
             }
             const currentRow = \`<tr style="background:\${zoneBg};border-bottom:1px solid rgba(255,255,255,0.1);border-top:1px solid rgba(255,255,255,0.1)">
-                <td style="padding:6px 10px;color:\${zoneColor};font-weight:700;font-size:12px;white-space:nowrap">▶ Current Price</td>
+                <td style="padding:6px 10px;color:\${zoneColor};font-weight:700;font-size:12px;white-space:nowrap">▶️ Current Price</td>
                 <td style="padding:6px 10px;font-size:12px;text-align:right;font-weight:700;color:\${zoneColor}">₹\${price ? price.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:0}) : '—'}</td>
                 <td style="padding:6px 10px;font-size:12px;text-align:right;opacity:0.4">—</td>
             </tr>\`;
@@ -2291,85 +2277,82 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
             return 'zone-btw';
         }
         
-        // Scenario-based projections
-        // Revenue CAGR is more stable than profit (profit can be distorted by one-off years)
-        // Use average of revenue + profit 5Y where both available, else prefer revenue
-        const revenueCagr = f.salesGrowth5Y   ?? f.salesGrowth3Y   ?? null;
+        // Stock price = EPS × P/E  →  project both components separately
+        // EPS growth: profit CAGR blended 50/50 with India long-term rate (12%) for mean-reversion
+        // P/E: normalises toward historical median PE over time (premium ratings compress as growth matures)
         const profitCagr  = f.profitGrowth5Y  ?? f.profitGrowth3Y  ?? null;
-        const baseGrowth = (revenueCagr !== null && profitCagr !== null)
-            ? (revenueCagr + profitCagr) / 2
-            : (revenueCagr ?? profitCagr ?? null);
-        const scenarios = {
-            conservative: baseGrowth * 0.6,
-            moderate:     baseGrowth,
-            optimistic:   baseGrowth * 1.4
-        };
-        
+        const revenueCagr = f.salesGrowth5Y   ?? f.salesGrowth3Y   ?? null;
+        const blendedEpsGrowth = profitCagr !== null ? profitCagr * 0.5 + 12 * 0.5 : null;
+        const currentPE = (f.pe != null && f.pe > 0) ? f.pe : null;
+        const targetPE  = (f.medianPE != null && f.medianPE > 0) ? f.medianPE : currentPE;
+        const hasPEModel = currentPE !== null && blendedEpsGrowth !== null;
+
+        // Returns a total price multiplier for a given scenario and horizon
+        function getProjectionMultiplier(scenario, years) {
+            const epsScale  = { conservative: 0.75, moderate: 1.0, optimistic: 1.25 }[scenario];
+            const epsCap    = { conservative: 15,   moderate: 22,  optimistic: 28  }[scenario];
+            // Conservative reverts PE fully by yr 10; optimistic barely reverts
+            const peRevert  = { conservative: 1.0,  moderate: 0.6, optimistic: 0.3 }[scenario];
+
+            if (hasPEModel) {
+                const epsRate       = Math.min(blendedEpsGrowth * epsScale, epsCap);
+                const epsMultiplier = Math.pow(1 + epsRate / 100, years);
+                const reversionW    = Math.min((years / 10) * peRevert, 1);
+                const futurePE      = currentPE + (targetPE - currentPE) * reversionW;
+                return epsMultiplier * (futurePE / currentPE);
+            } else if (blendedEpsGrowth !== null) {
+                // No PE data (loss-making) — use blended profit CAGR only
+                const fallbackCap = { conservative: 12, moderate: 18, optimistic: 24 }[scenario];
+                return Math.pow(1 + Math.min(blendedEpsGrowth * epsScale, fallbackCap) / 100, years);
+            } else if (revenueCagr !== null) {
+                // Last resort: revenue CAGR heavily discounted — revenue ≠ stock price
+                const blended = revenueCagr * 0.3 + 12 * 0.7;
+                const revCap  = { conservative: 10, moderate: 15, optimistic: 20 }[scenario];
+                return Math.pow(1 + Math.min(blended * epsScale, revCap) / 100, years);
+            }
+            return null;
+        }
+
         function setScenario(scenario) {
-            // Update tab styling
             document.querySelectorAll('.scenario-tab').forEach(tab => {
                 tab.classList.remove('active');
-                if (tab.textContent.toLowerCase().includes(scenario)) {
-                    tab.classList.add('active');
-                }
+                if (tab.textContent.toLowerCase().includes(scenario)) tab.classList.add('active');
             });
-            
-            // Calculate projections
-            const growth = scenarios[scenario];
-            const currentPrice = stock.currentPrice;
-            const investedValue = stock.investedValue;
-            
-            const project = (years) => {
-                const factor = Math.pow(1 + growth / 100, years);
-                const price = currentPrice * factor;
-                const returnPct = (factor - 1) * 100;
-                // CAGR back-calculated from projected price to current price over N years
-                const cagr = (Math.pow(price / currentPrice, 1 / years) - 1) * 100;
-                return { price, returnPct, futureValue: investedValue * factor, cagr };
+
+            const m3 = getProjectionMultiplier(scenario, 3);
+            if (m3 === null) {
+                document.getElementById('predictionGrid').innerHTML =
+                    \`<div style="grid-column:span 3;text-align:center;opacity:0.5;padding:16px">No growth data available for projections</div>\`;
+                return;
+            }
+            const m5  = getProjectionMultiplier(scenario, 5);
+            const m10 = getProjectionMultiplier(scenario, 10);
+
+            const currentPrice    = stock.currentPrice;
+            const investedValue   = stock.investedValue || 0;
+            const displayInvested = investedValue > 0 ? investedValue : 100000;
+            const isHypothetical  = investedValue <= 0;
+            const investedLabel   = isHypothetical ? '₹1L invested →' : \`Your ₹\${formatCurrency(displayInvested)} →\`;
+
+            const makeCard = (label, multiplier) => {
+                const price      = currentPrice * multiplier;
+                const returnPct  = (multiplier - 1) * 100;
+                const futureVal  = displayInvested * multiplier;
+                return \`
+                <div class="prediction-card">
+                    <div class="period">\${label}</div>
+                    <div class="projected-price">₹\${price.toFixed(0)}</div>
+                    <div class="projected-return \${returnPct >= 0 ? 'positive' : 'negative'}">
+                        \${returnPct >= 0 ? '+' : ''}\${returnPct.toFixed(0)}%
+                    </div>
+                    <div class="invested-value">
+                        \${investedLabel} <span class="future">\${formatCurrency(futureVal)}</span>
+                    </div>
+                </div>\`;
             };
-            
-            const proj3Y = project(3);
-            const proj5Y = project(5);
-            const proj10Y = project(10);
-            
-            document.getElementById('predictionGrid').innerHTML = \`
-                <div class="prediction-card">
-                    <div class="period">3 Years</div>
-                    <div class="projected-price">₹\${proj3Y.price.toFixed(0)}</div>
-                    <div class="projected-return \${proj3Y.returnPct >= 0 ? 'positive' : 'negative'}">
-                        \${proj3Y.returnPct >= 0 ? '+' : ''}\${proj3Y.returnPct.toFixed(0)}%
-                    </div>
-                    <div class="cagr">@ \${proj3Y.cagr.toFixed(1)}% CAGR</div>
-                    <div class="invested-value">
-                        Your ₹\${formatCurrency(investedValue)} becomes
-                        <span class="future">\${formatCurrency(proj3Y.futureValue)}</span>
-                    </div>
-                </div>
-                <div class="prediction-card">
-                    <div class="period">5 Years</div>
-                    <div class="projected-price">₹\${proj5Y.price.toFixed(0)}</div>
-                    <div class="projected-return \${proj5Y.returnPct >= 0 ? 'positive' : 'negative'}">
-                        \${proj5Y.returnPct >= 0 ? '+' : ''}\${proj5Y.returnPct.toFixed(0)}%
-                    </div>
-                    <div class="cagr">@ \${proj5Y.cagr.toFixed(1)}% CAGR</div>
-                    <div class="invested-value">
-                        Your ₹\${formatCurrency(investedValue)} becomes
-                        <span class="future">\${formatCurrency(proj5Y.futureValue)}</span>
-                    </div>
-                </div>
-                <div class="prediction-card">
-                    <div class="period">10 Years</div>
-                    <div class="projected-price">₹\${proj10Y.price.toFixed(0)}</div>
-                    <div class="projected-return \${proj10Y.returnPct >= 0 ? 'positive' : 'negative'}">
-                        \${proj10Y.returnPct >= 0 ? '+' : ''}\${proj10Y.returnPct.toFixed(0)}%
-                    </div>
-                    <div class="cagr">@ \${proj10Y.cagr.toFixed(1)}% CAGR</div>
-                    <div class="invested-value">
-                        Your ₹\${formatCurrency(investedValue)} becomes
-                        <span class="future">\${formatCurrency(proj10Y.futureValue)}</span>
-                    </div>
-                </div>
-            \`;
+
+            document.getElementById('predictionGrid').innerHTML =
+                makeCard('3 Years', m3) + makeCard('5 Years', m5) + makeCard('10 Years', m10);
         }
         
         // Score Radar Chart
@@ -2462,94 +2445,94 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
 </body>
 </html>`;
 
-    function formatCurrency(value: number): string {
-      if (Math.abs(value) >= 10000000)
-        return "₹" + (value / 10000000).toFixed(2) + " Cr";
-      if (Math.abs(value) >= 100000)
-        return "₹" + (value / 100000).toFixed(2) + " L";
-      return "₹" + value.toLocaleString("en-IN", { maximumFractionDigits: 0 });
-    }
+        function formatCurrency(value: number): string {
+            if (Math.abs(value) >= 10000000)
+                return "₹" + (value / 10000000).toFixed(2) + " Cr";
+            if (Math.abs(value) >= 100000)
+                return "₹" + (value / 100000).toFixed(2) + " L";
+            return "₹" + value.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+        }
 
-    function getVerdictClass(verdict: string): string {
-      const v = verdict.toLowerCase();
-      if (v.includes("super")) return "super-strong-buy";
-      if (v.includes("strong")) return "strong-buy";
-      if (v.includes("buy")) return "buy";
-      if (v.includes("weak")) return "weak-hold";
-      if (v.includes("hold")) return "hold";
-      return "sell";
-    }
+        function getVerdictClass(verdict: string): string {
+            const v = verdict.toLowerCase();
+            if (v.includes("super")) return "super-strong-buy";
+            if (v.includes("strong")) return "strong-buy";
+            if (v.includes("buy")) return "buy";
+            if (v.includes("weak")) return "weak-hold";
+            if (v.includes("hold")) return "hold";
+            return "sell";
+        }
 
-    function getScoreClass(score: number): string {
-      if (score >= 7) return "high";
-      if (score >= 5) return "medium";
-      return "low";
-    }
+        function getScoreClass(score: number): string {
+            if (score >= 7) return "high";
+            if (score >= 5) return "medium";
+            return "low";
+        }
 
-    function getPEIndicator(
-      pe: number | null | undefined,
-      indPE: number | null | undefined,
-    ): string {
-      if (!pe || !indPE) return "";
-      const ratio = pe / indPE;
-      if (ratio < 0.8) {
-        return '<span class="valuation-indicator undervalued" title="P/E < 80% of Industry P/E">Undervalued</span>';
-      } else if (ratio <= 1.2) {
-        return '<span class="valuation-indicator fair" title="P/E within 80-120% of Industry P/E">Fair Value</span>';
-      } else {
-        return '<span class="valuation-indicator overvalued" title="P/E > 120% of Industry P/E">Overvalued</span>';
-      }
-    }
+        function getPEIndicator(
+            pe: number | null | undefined,
+            indPE: number | null | undefined,
+        ): string {
+            if (!pe || !indPE) return "";
+            const ratio = pe / indPE;
+            if (ratio < 0.8) {
+                return '<span class="valuation-indicator undervalued" title="P/E < 80% of Industry P/E">Undervalued</span>';
+            } else if (ratio <= 1.2) {
+                return '<span class="valuation-indicator fair" title="P/E within 80-120% of Industry P/E">Fair Value</span>';
+            } else {
+                return '<span class="valuation-indicator overvalued" title="P/E > 120% of Industry P/E">Overvalued</span>';
+            }
+        }
 
-    function getPBIndicator(pb: number | null | undefined): string {
-      if (!pb) return "";
-      if (pb < 1.5) {
-        return '<span class="valuation-indicator undervalued" title="P/B < 1.5 (Trading below 1.5x book value)">Attractive</span>';
-      } else if (pb <= 3) {
-        return '<span class="valuation-indicator fair" title="P/B between 1.5 - 3.0">Fair</span>';
-      } else if (pb <= 5) {
-        return '<span class="valuation-indicator overvalued" title="P/B between 3.0 - 5.0">Premium</span>';
-      } else {
-        return '<span class="valuation-indicator overvalued" title="P/B > 5.0 (Very high premium)">Expensive</span>';
-      }
-    }
+        function getPBIndicator(pb: number | null | undefined): string {
+            if (!pb) return "";
+            if (pb < 1.5) {
+                return '<span class="valuation-indicator undervalued" title="P/B < 1.5 (Trading below 1.5x book value)">Attractive</span>';
+            } else if (pb <= 3) {
+                return '<span class="valuation-indicator fair" title="P/B between 1.5 - 3.0">Fair</span>';
+            } else if (pb <= 5) {
+                return '<span class="valuation-indicator overvalued" title="P/B between 3.0 - 5.0">Premium</span>';
+            } else {
+                return '<span class="valuation-indicator overvalued" title="P/B > 5.0 (Very high premium)">Expensive</span>';
+            }
+        }
 
-    function getPETrendIndicator(peChange: number | null | undefined): string {
-      if (peChange === null || peChange === undefined) return "";
-      if (peChange < -15) {
-        return (
-          '<span class="valuation-indicator undervalued" title="Current P/E is more than 15% below 5-year median">↓ ' +
-          Math.abs(peChange).toFixed(0) +
-          "% Below Avg</span>"
-        );
-      } else if (peChange <= 15) {
-        return '<span class="valuation-indicator fair" title="Current P/E is within ±15% of 5-year median">≈ Near Average</span>';
-      } else {
-        return (
-          '<span class="valuation-indicator overvalued" title="Current P/E is more than 15% above 5-year median">↑ ' +
-          peChange.toFixed(0) +
-          "% Above Avg</span>"
-        );
-      }
-    }
+        function getPETrendIndicator(peChange: number | null | undefined): string {
+            if (peChange === null || peChange === undefined) return "";
+            if (peChange < -15) {
+                return (
+                    '<span class="valuation-indicator undervalued" title="Current P/E is more than 15% below 5-year median">↓ ' +
+                    Math.abs(peChange).toFixed(0) +
+                    "% Below Avg</span>"
+                );
+            } else if (peChange <= 15) {
+                return '<span class="valuation-indicator fair" title="Current P/E is within ±15% of 5-year median">≈ Near Average</span>';
+            } else {
+                return (
+                    '<span class="valuation-indicator overvalued" title="Current P/E is more than 15% above 5-year median">↑ ' +
+                    peChange.toFixed(0) +
+                    "% Above Avg</span>"
+                );
+            }
+        }
 
-    function renderScoreItems(stock: StockAnalysis): string {
-      const items = [
-        { name: "Revenue Growth (15%)", score: stock.scores.revenueGrowth },
-        { name: "Profit Growth (15%)", score: stock.scores.profitGrowth },
-        { name: "Balance Sheet (10%)", score: stock.scores.balanceSheet },
-        { name: "Cash Flow (10%)", score: stock.scores.cashFlow },
-        { name: "Management (10%)", score: stock.scores.management },
-        { name: "Industry Tailwind (10%)", score: stock.scores.industry },
-        { name: "Competitive Moat (10%)", score: stock.scores.moat },
-        { name: "Valuation (10%)", score: stock.scores.valuation },
-        { name: "Capital Alloc (5%)", score: stock.scores.capitalAllocation },
-        { name: "Risk Level (5%)", score: stock.scores.risk },
-      ];
+        function renderScoreItems(stock: StockAnalysis): string {
+            const items = [
+                { name: "Revenue Growth (15%)", score: stock.scores.revenueGrowth },
+                { name: "Profit Growth (15%)", score: stock.scores.profitGrowth },
+                { name: "Balance Sheet (10%)", score: stock.scores.balanceSheet },
+                { name: "Cash Flow (10%)", score: stock.scores.cashFlow },
+                { name: "Management (10%)", score: stock.scores.management },
+                { name: "Industry Tailwind (10%)", score: stock.scores.industry },
+                { name: "Competitive Moat (10%)", score: stock.scores.moat },
+                { name: "Valuation (10%)", score: stock.scores.valuation },
+                { name: "Capital Alloc (5%)", score: stock.scores.capitalAllocation },
+                { name: "Risk Level (5%)", score: stock.scores.risk },
+            ];
 
-      return items
-        .map(
-          (item) => `
+            return items
+                .map(
+                    (item) => `
                 <div class="score-item">
                     <span class="name">${item.name}</span>
                     <div class="score-bar-bg">
@@ -2558,73 +2541,75 @@ Respond ONLY in this exact JSON (no markdown, no extra text):
                     <span class="score">${item.score}/10</span>
                 </div>
             `,
-        )
-        .join("");
+                )
+                .join("");
+        }
+
+        function renderPredictions(
+            stock: StockAnalysis,
+            f: Partial<FundamentalData>,
+        ): string {
+            const profitCagr = f.profitGrowth5Y ?? f.profitGrowth3Y ?? null;
+            const revenueCagr = f.salesGrowth5Y ?? f.salesGrowth3Y ?? null;
+            const blendedEpsGrowth =
+                profitCagr !== null ? profitCagr * 0.5 + 12 * 0.5 : null;
+            const currentPE = f.pe != null && f.pe > 0 ? f.pe : null;
+            const targetPE =
+                f.medianPE != null && f.medianPE > 0 ? f.medianPE : currentPE;
+            const hasPEModel = currentPE !== null && blendedEpsGrowth !== null;
+
+            const currentPrice = stock.currentPrice;
+            const investedValue = stock.investedValue || 0;
+            const displayInvested = investedValue > 0 ? investedValue : 100000;
+            const isHypothetical = investedValue <= 0;
+
+            // Moderate scenario multiplier (same logic as JS getProjectionMultiplier)
+            const getModerateMultiplier = (years: number): number => {
+                if (hasPEModel) {
+                    const epsRate = Math.min(blendedEpsGrowth! * 1.0, 22);
+                    const epsMultiplier = Math.pow(1 + epsRate / 100, years);
+                    const reversionW = Math.min((years / 10) * 0.6, 1);
+                    const futurePE = currentPE! + (targetPE! - currentPE!) * reversionW;
+                    return epsMultiplier * (futurePE / currentPE!);
+                } else if (blendedEpsGrowth !== null) {
+                    return Math.pow(1 + Math.min(blendedEpsGrowth, 18) / 100, years);
+                } else if (revenueCagr !== null) {
+                    const blended = revenueCagr * 0.3 + 12 * 0.7;
+                    return Math.pow(1 + Math.min(blended, 15) / 100, years);
+                }
+                return 1;
+            };
+
+            const project = (years: number) => {
+                const multiplier = getModerateMultiplier(years);
+                return {
+                    price: currentPrice * multiplier,
+                    returnPct: (multiplier - 1) * 100,
+                    futureValue: displayInvested * multiplier,
+                };
+            };
+
+            const proj3Y = project(3);
+            const proj5Y = project(5);
+            const proj10Y = project(10);
+
+            const investedLabel = isHypothetical
+                ? `₹1L invested →`
+                : `Your ₹${formatCurrency(displayInvested)} →`;
+
+            const card = (label: string, p: ReturnType<typeof project>) => `
+                <div class="prediction-card">
+                    <div class="period">${label}</div>
+                    <div class="projected-price">₹${p.price.toFixed(0)}</div>
+                    <div class="projected-return ${p.returnPct >= 0 ? "positive" : "negative"}">
+                        ${p.returnPct >= 0 ? "+" : ""}${p.returnPct.toFixed(0)}%
+                    </div>
+                    <div class="invested-value">
+                        ${investedLabel} <span class="future">${formatCurrency(p.futureValue)}</span>
+                    </div>
+                </div>`;
+
+            return card("3 Years", proj3Y) + card("5 Years", proj5Y) + card("10 Years", proj10Y);
+        }
     }
-
-    function renderPredictions(
-      stock: StockAnalysis,
-      f: Partial<FundamentalData>,
-    ): string {
-      const revenueCagr = f.salesGrowth5Y ?? f.salesGrowth3Y ?? null;
-      const profitCagr = f.profitGrowth5Y ?? f.profitGrowth3Y ?? null;
-      const moderateGrowth =
-        revenueCagr !== null && profitCagr !== null
-          ? (revenueCagr + profitCagr) / 2
-          : (revenueCagr ?? profitCagr ?? null);
-      const currentPrice = stock.currentPrice;
-      const investedValue = stock.investedValue;
-
-      const project = (years: number, growthRate: number) => {
-        const factor = Math.pow(1 + growthRate / 100, years);
-        const price = currentPrice * factor;
-        const returnPct = (factor - 1) * 100;
-        const cagr = (Math.pow(price / currentPrice, 1 / years) - 1) * 100;
-        return { price, returnPct, futureValue: investedValue * factor, cagr };
-      };
-
-      const proj3Y = project(3, moderateGrowth ?? 0);
-      const proj5Y = project(5, moderateGrowth ?? 0);
-      const proj10Y = project(10, moderateGrowth ?? 0);
-
-      return `
-                <div class="prediction-card">
-                    <div class="period">3 Years</div>
-                    <div class="projected-price">₹${proj3Y.price.toFixed(0)}</div>
-                    <div class="projected-return ${proj3Y.returnPct >= 0 ? "positive" : "negative"}">
-                        ${proj3Y.returnPct >= 0 ? "+" : ""}${proj3Y.returnPct.toFixed(0)}%
-                    </div>
-                    <div class="cagr">@ ${proj3Y.cagr.toFixed(1)}% CAGR</div>
-                    <div class="invested-value">
-                        Your ₹${formatCurrency(investedValue)} becomes
-                        <span class="future">${formatCurrency(proj3Y.futureValue)}</span>
-                    </div>
-                </div>
-                <div class="prediction-card">
-                    <div class="period">5 Years</div>
-                    <div class="projected-price">₹${proj5Y.price.toFixed(0)}</div>
-                    <div class="projected-return ${proj5Y.returnPct >= 0 ? "positive" : "negative"}">
-                        ${proj5Y.returnPct >= 0 ? "+" : ""}${proj5Y.returnPct.toFixed(0)}%
-                    </div>
-                    <div class="cagr">@ ${proj5Y.cagr.toFixed(1)}% CAGR</div>
-                    <div class="invested-value">
-                        Your ₹${formatCurrency(investedValue)} becomes
-                        <span class="future">${formatCurrency(proj5Y.futureValue)}</span>
-                    </div>
-                </div>
-                <div class="prediction-card">
-                    <div class="period">10 Years</div>
-                    <div class="projected-price">₹${proj10Y.price.toFixed(0)}</div>
-                    <div class="projected-return ${proj10Y.returnPct >= 0 ? "positive" : "negative"}">
-                        ${proj10Y.returnPct >= 0 ? "+" : ""}${proj10Y.returnPct.toFixed(0)}%
-                    </div>
-                    <div class="cagr">@ ${proj10Y.cagr.toFixed(1)}% CAGR</div>
-                    <div class="invested-value">
-                        Your ₹${formatCurrency(investedValue)} becomes
-                        <span class="future">${formatCurrency(proj10Y.futureValue)}</span>
-                    </div>
-                </div>
-            `;
-    }
-  }
 }

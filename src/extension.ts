@@ -145,62 +145,34 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       "portfolioAnalyzer.configureProvider",
       async () => {
-        const providers = [
-          {
-            label: "IndMoney",
-            description: "INDstocks API",
-            value: "indmoney",
-          },
-          {
-            label: "Zerodha",
-            description: "Kite Connect API (Coming Soon)",
-            value: "zerodha",
-          },
-          { label: "Groww", description: "Coming Soon", value: "groww" },
-          { label: "Upstox", description: "Coming Soon", value: "upstox" },
+        const brokers = [
+          { label: "$(check) IndMoney", description: "INDstocks API", value: "indmoney" },
+          { label: "Zerodha", description: "Coming soon", value: "zerodha" },
+          { label: "Groww", description: "Coming soon", value: "groww" },
+          { label: "Upstox", description: "Coming soon", value: "upstox" },
         ];
 
-        const selected = await vscode.window.showQuickPick(providers, {
-          placeHolder: "Select your broker/trading platform",
+        const selected = await vscode.window.showQuickPick(brokers, {
+          placeHolder: "Select a broker to configure",
         });
 
-        if (selected) {
-          await vscode.workspace
-            .getConfiguration("portfolioAnalyzer")
-            .update(
-              "activeProvider",
-              selected.value,
-              vscode.ConfigurationTarget.Global,
-            );
+        if (!selected) return;
 
-          if (selected.value === "indmoney") {
-            const token = await vscode.window.showInputBox({
-              prompt: "Enter your IndMoney access token",
-              password: true,
-              placeHolder: "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9...",
-            });
+        if (selected.value !== "indmoney") {
+          vscode.window.showInformationMessage(`${selected.label} support coming soon!`);
+          return;
+        }
 
-            if (token) {
-              await vscode.workspace
-                .getConfiguration("portfolioAnalyzer")
-                .update(
-                  "indmoney.accessToken",
-                  token,
-                  vscode.ConfigurationTarget.Global,
-                );
+        const token = await vscode.window.showInputBox({
+          prompt: "Enter your IndMoney access token",
+          password: true,
+          placeHolder: "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9...",
+        });
 
-              if (sidebarProvider) {
-                await sidebarProvider.refresh();
-              }
-              vscode.window.showInformationMessage(
-                "IndMoney configured successfully!",
-              );
-            }
-          } else {
-            vscode.window.showInformationMessage(
-              `${selected.label} support coming soon!`,
-            );
-          }
+        if (token) {
+          await context.globalState.update("indmoney.accessToken", token);
+          if (sidebarProvider) await sidebarProvider.refresh();
+          vscode.window.showInformationMessage("IndMoney configured!");
         }
       },
     ),

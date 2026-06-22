@@ -9,14 +9,18 @@ import { Holding, MarketQuote } from "./IPortfolioProvider";
 import { BasePortfolioProvider } from "./BasePortfolioProvider";
 
 const INDMONEY_BASE = "https://api.indstocks.com";
+const TOKEN_KEY = "indmoney.accessToken";
 
 export class IndMoneyProvider extends BasePortfolioProvider {
   readonly id = "indmoney";
   readonly name = "IndMoney";
 
+  constructor(private readonly context: vscode.ExtensionContext) {
+    super();
+  }
+
   private getToken(): string {
-    const config = vscode.workspace.getConfiguration("portfolioAnalyzer");
-    return config.get<string>("indmoney.accessToken", "");
+    return this.context.globalState.get<string>(TOKEN_KEY, "");
   }
 
   isConfigured(): boolean {
