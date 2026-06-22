@@ -1092,7 +1092,7 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
             sugBox.style.display = 'block';
             requestAnimationFrame(() => { const inp = document.getElementById('inSym');
             if(!inp || !sugBox) return;
-            const rect = inp.getBoundingClinetRect();
+            const rect = inp.getBoundingClientRect();
             const boxH = sugBox.offsetHeight;
             sugBox.style.left = rect. left + 'px';
             sugBox.style.width = rect.width + 'px';
