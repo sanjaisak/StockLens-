@@ -2,8 +2,8 @@
   "name": "stocklens",
   "displayName": "StockLens",
   "description": "Comprehensive equity research and portfolio analysis with charts and multi-broker support",
-  "version": "1.1.0",
-  "publisher": "portfolio-tools",
+  "version": "1.0.0",
+  "publisher": "sanjaisakthivel",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -19,7 +19,7 @@
     "trading",
     "charts"
   ],
-  "icon": "media/icon.svg",
+  "icon": "media/icon.png",
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {

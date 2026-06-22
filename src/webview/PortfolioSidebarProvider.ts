@@ -16,7 +16,7 @@ import { StockDetailPanel } from "./StockDetailPanel";
 import { PortfolioReviewPanel } from "./PortfolioReviewPanel";
 
 export class PortfolioSidebarProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = "portfolioAnalyzer.dashboard";
+  public static readonly nseviewType = "portfolioAnalyzer.dashboard";
 
   private _view?: vscode.WebviewView;
   private _portfolioData?: PortfolioAnalysis;
@@ -112,6 +112,12 @@ export class PortfolioSidebarProvider implements vscode.WebviewViewProvider {
           await this.refresh();
           break;
         }
+        case "manualBulkAdd": {
+          const mp = this._providerManager.getManualProvider();
+          await mp.addOrUpdateMultipleHoldings(data.holdings);
+          await this.refresh();
+          break;
+        }
         case "manualDelete": {
           const mp = this._providerManager.getManualProvider();
           await mp.deleteHolding(data.symbol);
@@ -120,7 +126,7 @@ export class PortfolioSidebarProvider implements vscode.WebviewViewProvider {
         }
         case "searchStocksManual": {
           const results = this._stockSearch.searchStocks(data.query, 8);
-          webviewView.webview.postMessage({ type: "manualSearchResults", results });
+          webviewView.webview.postMessage({ type: "manualSearchResults", results, context: data.context || "single", rowIdx: data.rowIdx });
           break;
         }
       }
@@ -846,6 +852,59 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
             color: var(--text-secondary);
             opacity: 0.6;
         }
+        .bulk-add-area {
+            padding: 10px 12px;
+            border-top: 1px solid var(--border-color);
+        }
+        .bulk-add-hint {
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            opacity: 0.8;
+        }
+        .bulk-header-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 20px;
+            gap: 4px;
+            padding: 0 2px 4px;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+        .bulk-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 20px;
+            gap: 4px;
+            margin-bottom: 4px;
+            align-items: center;
+        }
+        .bulk-error {
+            font-size: 10px;
+            color: var(--danger-color);
+            margin-top: 4px;
+            display: none;
+        }
+        .bulk-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .bulk-import-btn {
+            font-size: 10px; padding: 3px 10px;
+            border-radius: 4px; cursor: pointer;
+            background: var(--accent-color);
+            color: var(--vscode-button-foreground);
+            border: none; white-space: nowrap;
+        }
+        .bulk-cancel-btn {
+            font-size: 10px; padding: 3px 8px;
+            border-radius: 4px; cursor: pointer;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
     </style>
 </head>
 <body>
@@ -920,6 +979,20 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
                 </thead>
                 <tbody id="manualTableBody"></tbody>
             </table>
+            <div id="bulkAddArea" class="bulk-add-area" style="display:none">
+                <div class="bulk-add-hint">Add one or more holdings — click "+ Add Row" to add more</div>
+                <div class="bulk-header-row">
+                    <span>Symbol</span><span>Qty</span><span>Avg ₹</span><span></span>
+                </div>
+                <div id="bulkRows"></div>
+                <button class="manual-add-btn" onclick="addBulkRow()" style="margin-top:5px;width:100%;text-align:center">+ Add Row</button>
+                <div id="bulkError" class="bulk-error"></div>
+                <div class="bulk-actions">
+                    <button class="bulk-import-btn" onclick="saveBulk()">✓ Import All</button>
+                    <button class="bulk-cancel-btn" onclick="cancelBulk()">✕ Cancel</button>
+                </div>
+                <div class="manual-suggestions" id="bulkSuggestions" style="display:none"></div>
+            </div>
         </div>
 
         <div class="section-header">
@@ -1021,7 +1094,14 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
 
         function showAddRow() {
             _editingSymbol = null;
-            appendInputRow('', '', '', '');
+            document.getElementById('manualInputRow')?.remove();
+            _bulkRowData = [{sym:'',name:'',qty:'',price:''}];
+            _bulkActiveRow = -1;
+            renderBulkRows();
+            const area = document.getElementById('bulkAddArea');
+            if (area) area.style.display = 'block';
+            document.getElementById('bulkError').style.display = 'none';
+            setTimeout(() => document.getElementById('bSym-0')?.focus(), 0);
         }
 
         function editRow(symbol) {
@@ -1147,6 +1227,150 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
         function cancelRow() {
             document.getElementById('manualInputRow')?.remove();
             _editingSymbol = null;
+        }
+
+        // Bulk add state
+        let _bulkRowData = []; // [{sym, name, qty, price}, ...]
+        let _bulkActiveRow = -1;
+        let _bulkSugResults = [];
+        let _bulkSugDebounce = null;
+
+function cancelBulk() {
+            const area = document.getElementById('bulkAddArea');
+            if (area) area.style.display = 'none';
+            const sugBox = document.getElementById('bulkSuggestions');
+            if (sugBox) sugBox.style.display = 'none';
+            _bulkRowData = [];
+            _bulkActiveRow = -1;
+        }
+
+        function addBulkRow() {
+            // Sync current DOM values before adding
+            _bulkRowData.forEach((_, i) => syncBulkRow(i));
+            _bulkRowData.push({sym:'',name:'',qty:'',price:''});
+            renderBulkRows();
+            const i = _bulkRowData.length - 1;
+            setTimeout(() => document.getElementById(\`bSym-\${i}\`)?.focus(), 0);
+        }
+
+        function removeBulkRow(i) {
+            if (_bulkRowData.length <= 1) return;
+            _bulkRowData.splice(i, 1);
+            renderBulkRows();
+        }
+
+        function syncBulkRow(i) {
+            const sym = document.getElementById(\`bSym-\${i}\`)?.value?.trim().toUpperCase() || '';
+            const name = document.getElementById(\`bName-\${i}\`)?.value?.trim() || sym;
+            const qty = document.getElementById(\`bQty-\${i}\`)?.value || '';
+            const price = document.getElementById(\`bPrice-\${i}\`)?.value || '';
+            if (_bulkRowData[i]) _bulkRowData[i] = {sym, name, qty, price};
+        }
+
+        function renderBulkRows() {
+            const container = document.getElementById('bulkRows');
+            if (!container) return;
+            container.innerHTML = _bulkRowData.map((r, i) => \`
+                <div class="bulk-row" id="bulkRow-\${i}">
+                    <div style="position:relative">
+                        <input class="manual-input" id="bSym-\${i}" placeholder="Search symbol…"
+                            value="\${r.sym}" autocomplete="off" oninput="onBulkSymInput(\${i}, this.value)">
+                        <input type="hidden" id="bName-\${i}" value="\${r.name}">
+                    </div>
+                    <input class="manual-input" id="bQty-\${i}" type="number" min="0.001" step="any" placeholder="Qty" value="\${r.qty}">
+                    <input class="manual-input" id="bPrice-\${i}" type="number" min="0" step="0.01" placeholder="Avg ₹" value="\${r.price}">
+                    <button class="manual-row-btn delete" onclick="removeBulkRow(\${i})" title="Remove">✕</button>
+                </div>
+            \`).join('');
+        }
+
+        function onBulkSymInput(i, val) {
+            _bulkActiveRow = i;
+            if (_bulkRowData[i]) { _bulkRowData[i].sym = val; _bulkRowData[i].name = ''; }
+            const hiddenName = document.getElementById(\`bName-\${i}\`);
+            if (hiddenName) hiddenName.value = '';
+            clearTimeout(_bulkSugDebounce);
+            const sugBox = document.getElementById('bulkSuggestions');
+            if (!val || val.length < 1) { if (sugBox) sugBox.style.display = 'none'; _bulkSugResults = []; return; }
+            _bulkSugDebounce = setTimeout(() => {
+                vscode.postMessage({ type: 'searchStocksManual', query: val, context: 'bulk', rowIdx: i });
+            }, 150);
+        }
+
+        function renderBulkSuggestions(results, rowIdx) {
+            const sugBox = document.getElementById('bulkSuggestions');
+            if (!sugBox) return;
+            _bulkSugResults = results || [];
+            if (_bulkSugResults.length === 0 || _bulkActiveRow !== rowIdx) { sugBox.style.display = 'none'; return; }
+            sugBox.innerHTML = _bulkSugResults.slice(0, 8).map((r, idx) => \`
+                <div class="manual-suggestion" data-idx="\${idx}">
+                    <span class="sug-sym">\${r.symbol}</span>
+                    <span class="sug-name">\${r.name}</span>
+                </div>
+            \`).join('');
+            sugBox.style.visibility = 'hidden';
+            sugBox.style.display = 'block';
+            requestAnimationFrame(() => {
+                const inp = document.getElementById(\`bSym-\${rowIdx}\`);
+                if (!inp || !sugBox) return;
+                const rect = inp.getBoundingClientRect();
+                const boxH = sugBox.offsetHeight;
+                sugBox.style.left = rect.left + 'px';
+                sugBox.style.width = rect.width + 'px';
+                sugBox.style.top = (rect.top - boxH - 4) + 'px';
+                sugBox.style.visibility = 'visible';
+            });
+            sugBox.onclick = (e) => {
+                const row = e.target.closest('.manual-suggestion');
+                if (!row) return;
+                const idx = parseInt(row.dataset.idx, 10);
+                const picked = _bulkSugResults[idx];
+                if (picked) selectBulkSuggestion(rowIdx, picked.symbol, picked.name);
+            };
+        }
+
+        function selectBulkSuggestion(i, symbol, name) {
+            const inSym = document.getElementById(\`bSym-\${i}\`);
+            const inName = document.getElementById(\`bName-\${i}\`);
+            if (inSym) inSym.value = symbol;
+            if (inName) inName.value = name;
+            if (_bulkRowData[i]) { _bulkRowData[i].sym = symbol; _bulkRowData[i].name = name; }
+            _bulkSugResults = [];
+            const sugBox = document.getElementById('bulkSuggestions');
+            if (sugBox) sugBox.style.display = 'none';
+            document.getElementById(\`bQty-\${i}\`)?.focus();
+        }
+
+        // Hide bulk suggestions when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#bulkRows') && !e.target.closest('#bulkSuggestions')) {
+                const sugBox = document.getElementById('bulkSuggestions');
+                if (sugBox) sugBox.style.display = 'none';
+            }
+        });
+
+        function saveBulk() {
+            _bulkRowData.forEach((_, i) => syncBulkRow(i));
+            const errEl = document.getElementById('bulkError');
+            const filled = _bulkRowData.filter(r => r.sym || r.qty || r.price);
+            if (!filled.length) { errEl.textContent = 'Please fill in at least one stock.'; errEl.style.display = 'block'; return; }
+
+            const holdings = [];
+            const errors = [];
+            filled.forEach((r, i) => {
+                const sym = r.sym.toUpperCase();
+                const qty = parseFloat(r.qty);
+                const price = parseFloat(r.price);
+                if (!sym) { errors.push(\`Row \${i+1}: missing symbol\`); return; }
+                if (!isFinite(qty) || qty <= 0) { errors.push(\`\${sym}: invalid qty\`); return; }
+                if (!isFinite(price) || price <= 0) { errors.push(\`\${sym}: invalid price\`); return; }
+                holdings.push({ symbol: sym, name: r.name || sym, quantity: qty, avgPrice: price, exchange: 'NSE' });
+            });
+
+            if (errors.length) { errEl.textContent = errors.join(' | '); errEl.style.display = 'block'; return; }
+
+            vscode.postMessage({ type: 'manualBulkAdd', holdings });
+            cancelBulk();
         }
 
         function deleteRow(symbol) {
@@ -1338,7 +1562,11 @@ if (v.includes('strong')) return 'strong-buy';
                     break;
                 }
                 case 'manualSearchResults':
-                    renderSuggestions(message.results);
+                    if (message.context === 'bulk') {
+                        renderBulkSuggestions(message.results, message.rowIdx);
+                    } else {
+                        renderSuggestions(message.results);
+                    }
                     break;
             }
         });

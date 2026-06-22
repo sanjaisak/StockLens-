@@ -7,6 +7,7 @@
 import * as vscode from "vscode";
 import { BasePortfolioProvider } from "./BasePortfolioProvider";
 import { Holding, MarketQuote } from "./IPortfolioProvider";
+import fetch from "node-fetch";
 
 export interface ManualHolding {
   symbol: string;
@@ -68,6 +69,19 @@ export class ManualHoldingsProvider extends BasePortfolioProvider {
       securityId: h.symbol,
       exchange: h.exchange || "NSE",
     }));
+  }
+
+  async addOrUpdateMultipleHoldings(holdings: ManualHolding[]): Promise<void> {
+    const list = this.getStoredHoldings();
+    for (const h of holdings) {
+      const idx = list.findIndex(x => x.symbol.toUpperCase() === h.symbol.toUpperCase());
+      if (idx >= 0) {
+        list[idx] = h;
+      } else {
+        list.push(h);
+      }
+    }
+    await this.saveHoldings(list);
   }
 
   async getQuotes(holdings: Holding[]): Promise<Map<string, MarketQuote>> {
