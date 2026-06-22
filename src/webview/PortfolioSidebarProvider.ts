@@ -805,14 +805,14 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
         .manual-input:focus { border-color: var(--accent-color); }
         .manual-search-wrap { position: relative; }
         .manual-suggestions {
-            position: fixes;
+            position: fixed;
             background: var(--vscode-dropdown-background, #252526);
             border: 1px solid var(--border-color);
             border-radius: 4px;
             z-index: 9999;
             max-height: 140px;
             overflow-y: auto;
-            box-shadow: 0 -4px 12px rgb(0,0,0,0.4);
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.4);
         }
         .manual-suggestion {
             padding: 5px 8px;
@@ -1091,14 +1091,13 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
             sugBox.style.visibility='hidden';
             sugBox.style.display = 'block';
             requestAnimationFrame(() => { const inp = document.getElementById('inSym');
-            if(!inp || ! sugBox){
+            if(!inp || !sugBox) return;
             const rect = inp.getBoundingClinetRect();
             const boxH = sugBox.offsetHeight;
             sugBox.style.left = rect. left + 'px';
             sugBox.style.width = rect.width + 'px';
             sugBox.style.top = (rect.top - boxH - 4)+ 'px';
             sugBox.style.visibility = 'visible';
-            }
             });
 
             // Single delegated listener — replace any old one
