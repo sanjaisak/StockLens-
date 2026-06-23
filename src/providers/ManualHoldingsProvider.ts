@@ -7,7 +7,6 @@
 import * as vscode from "vscode";
 import { BasePortfolioProvider } from "./BasePortfolioProvider";
 import { Holding, MarketQuote } from "./IPortfolioProvider";
-import fetch from "node-fetch";
 
 export interface ManualHolding {
   symbol: string;
