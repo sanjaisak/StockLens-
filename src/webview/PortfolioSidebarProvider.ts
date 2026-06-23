@@ -1229,6 +1229,7 @@ Rules: output nothing outside the 5 section tags. No markdown. No prose outside 
         }
 
         function showAddRow() {
+        if(_holdingsCollapsed) toggleHoldingsCollapse();
             _editingSymbol = null;
             document.getElementById('manualInputRow')?.remove();
             _bulkRowData = [{sym:'',name:'',qty:'',price:''}];
